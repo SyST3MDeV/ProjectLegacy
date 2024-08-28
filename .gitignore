@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+#Project Legacy Specific
+Injector.exe
+server.bat
+client.bat
