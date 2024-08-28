@@ -2,6 +2,7 @@
 
 #include <thread>
 #include <iostream>
+#include <format>
 
 #include "MinHook/include/MinHook.h"
 
@@ -41,10 +42,6 @@ namespace Hooking {
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
-        if (object && function) {
-            std::cout << "[PE] " << object->GetFullName() << " - " << function->GetFullName() << std::endl;
-        }
-
         return reinterpret_cast<void*(__thiscall*)(UObject*, UFunction*, void*)>(object, function, params);
     }
 
@@ -55,7 +52,52 @@ namespace Hooking {
 
         MH_CreateHook(ProcessEventHookLocal, reinterpret_cast<void*>(ProcessEventHook), &origProcessEvent);
 
-        MH_EnableHook(ProcessEventHookLocal);
+        //MH_EnableHook(ProcessEventHookLocal);
+    }
+}
+
+namespace GameLogic {
+    void EnableGameConsole() {
+        CG::UKismetStringLibrary* stringLibrary = UObject::FindObjects<CG::UKismetStringLibrary>().back();
+        CG::UEngine* engine = UObject::FindObjects<CG::UEngine>().back();
+        CG::UInputSettings* inputSettings = UObject::FindObjects<CG::UInputSettings>().back();
+        CG::UGameplayStatics* gameplayStatics = UObject::FindObjects<CG::UGameplayStatics>().back();
+
+        inputSettings->ConsoleKeys[0].KeyName = stringLibrary->STATIC_Conv_StringToName(L"F2");
+
+        CG::UObject* NewObject = gameplayStatics->STATIC_SpawnObject(engine->ConsoleClass, engine->GameViewport);
+
+        engine->GameViewport->ViewportConsole = reinterpret_cast<CG::UConsole * >(NewObject);
+    }
+
+    void ExecuteConsoleCommand(const wchar_t* cmd) {
+        static UKismetSystemLibrary* systemLibrary = nullptr;
+
+        if (!systemLibrary) {
+            systemLibrary = UObject::FindObject<UKismetSystemLibrary>();
+        }
+
+        systemLibrary->STATIC_ExecuteConsoleCommand(Globals::GetGWorld(), cmd, Globals::GetLocalPlayerController<APlayerController>());
+    }
+
+    void LoadMap(const wchar_t* map, const wchar_t* options) {
+        static UGameplayStatics* systemLibrary = nullptr;
+
+        if (!systemLibrary) {
+            systemLibrary = UObject::FindObject<UGameplayStatics>();
+        }
+
+        static UKismetStringLibrary* kismetStringLibrary = nullptr;
+
+        if (!kismetStringLibrary) {
+            kismetStringLibrary = UObject::FindObject<UKismetStringLibrary>();
+        }
+
+        systemLibrary->STATIC_OpenLevel(Globals::GetGWorld(), kismetStringLibrary->STATIC_Conv_StringToName(map), true, options);
+    }
+
+    void SetUIState(EOrionUIState state) {
+        reinterpret_cast<void(__thiscall*)(UOrionUIManagerWidget*, EOrionUIState)>(Globals::ModuleBase + 0x7DDBC0)(reinterpret_cast<UOrionGameInstance*>(Globals::GetGWorld()->OwningGameInstance)->UIManager, state);
     }
 }
 
@@ -63,6 +105,14 @@ void InitConsole() {
     AllocConsole();
     FILE* f = new FILE();
     freopen_s(&f, "CONOUT$", "w", stdout);
+}
+
+void OnGameInit() {
+    std::cout << "Enabling game console..." << std::endl;
+    GameLogic::EnableGameConsole();
+
+    std::cout << "Loading map..." << std::endl;
+    GameLogic::LoadMap(L"Origin_1v1", L"");
 }
 
 void MainLoop() {
@@ -77,6 +127,10 @@ void Main() {
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 
     Hooking::InitHooking();
+
+    Sleep(25 * 1000);
+
+    OnGameInit();
 
     while (true) {
         MainLoop();
