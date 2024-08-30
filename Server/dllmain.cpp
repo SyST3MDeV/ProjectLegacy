@@ -227,7 +227,84 @@ namespace GameLogic {
 }
 
 namespace DamageCalculations {
+    float CalculateDamage() { //TODO: Actual damage calculations
+        return 100.0;
+    }
 
+    void ApplyDamage(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params, float damage) { //TODO: Deal damage to shield instead of health if shielded
+        params->OutExecutionOutput.OutputModifiers = TArray<FGameplayModifierEvaluatedData>();
+
+        FGameplayModifierEvaluatedData* evaluatedData = reinterpret_cast<FGameplayModifierEvaluatedData*>(EngineLogic::Malloc(sizeof(FGameplayModifierEvaluatedData), 0));
+
+        FGameplayEffectAttributeCaptureDefinition toCapture = FGameplayEffectAttributeCaptureDefinition();
+
+        toCapture = damageObject->RelevantAttributesToCapture[0];
+
+        if (toCapture.AttributeToCapture.Attribute && (uintptr_t)toCapture.AttributeToCapture.Attribute != 0xffffffff) {
+            CG::FGameplayAttribute newAttr = CG::FGameplayAttribute();
+
+            newAttr.Attribute = toCapture.AttributeToCapture.Attribute;
+            newAttr.AttributeName = FString();
+            void* str = EngineLogic::Malloc(sizeof(L"Health"), 0);
+            const wchar_t* my_str = L"Health";
+            memcpy_s(str, sizeof(L"Health"), my_str, sizeof(L"Health"));
+            newAttr.AttributeName._data = (wchar_t*)str;
+            newAttr.AttributeName._count = 6;
+            newAttr.AttributeName._max = 6;
+            newAttr.AttributeOwner = toCapture.AttributeToCapture.AttributeOwner;
+
+            evaluatedData->Attribute = newAttr;
+
+            evaluatedData->IsValid = true;
+
+            evaluatedData->Handle = *(reinterpret_cast<FActiveGameplayEffectHandle*>(EngineLogic::Malloc(sizeof(FActiveGameplayEffectHandle), 0)));
+            evaluatedData->Magnitude = CalculateDamage() * -1.0;
+            evaluatedData->ModifierOp = EGameplayModOp::Additive;
+
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._data = evaluatedData;
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._count = 1;
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._max = 1;
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledGameplayCuesManually = false;
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledStackCountManually = false;
+            ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bTriggerConditionalGameplayEffects = true;
+        }
+    }
+
+    void ProcDamageSFX(UGameplayEffectExecutionCalculation_Execute_Params* params, float damage) {
+        if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionDamageableActor::StaticClass())) {
+            reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(damage, nullptr);
+        }
+
+        static UOrionGameplayCueManager* manager = nullptr;
+
+        if (!manager) {
+            manager = SDKUtils::GetLastOfType<UOrionGameplayCueManager>();
+        }
+
+        FGameplayTag tag = FGameplayTag();
+        FGameplayCueParameters cueParams = FGameplayCueParameters();
+
+        cueParams.NormalizedMagnitude = 100.0;
+        cueParams.RawMagnitude = 100.0;
+        cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
+
+        if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
+            tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
+        }
+        else {
+            tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+        }
+
+        reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
+    }
+
+    void DoDamagePipeline(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) {
+        float damage = CalculateDamage();
+
+        ApplyDamage(damageObject, params, damage);
+
+        ProcDamageSFX(params, damage);
+    }
 }
 
 namespace Hooking {
@@ -255,88 +332,11 @@ namespace Hooking {
         }
 
         if (object->IsA(UOrionDamage::StaticClass())) {
-            CG::UOrionDamage* dmg = (CG::UOrionDamage*)object;
+            UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
 
-            ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers = CG::TArray<CG::FGameplayModifierEvaluatedData>();
+            UGameplayEffectExecutionCalculation_Execute_Params* dmgParams = reinterpret_cast<UGameplayEffectExecutionCalculation_Execute_Params*>(params);
 
-            CG::FGameplayModifierEvaluatedData* evaluatedData = (CG::FGameplayModifierEvaluatedData*)EngineLogic::Malloc(sizeof(CG::FGameplayModifierEvaluatedData), 0);
-
-            CG::FGameplayEffectAttributeCaptureDefinition toCapture = CG::FGameplayEffectAttributeCaptureDefinition();
-
-            toCapture = dmg->RelevantAttributesToCapture[0];
-
-            if (toCapture.AttributeToCapture.Attribute && (uintptr_t)toCapture.AttributeToCapture.Attribute != 0xffffffff) {
-                CG::FGameplayAttribute newAttr = CG::FGameplayAttribute();
-
-                newAttr.Attribute = toCapture.AttributeToCapture.Attribute;
-                newAttr.AttributeName = CG::FString();
-                void* str = EngineLogic::Malloc(sizeof(L"Health"), 0);
-                const wchar_t* my_str = L"Health";
-                memcpy_s(str, sizeof(L"Health"), my_str, sizeof(L"Health"));
-                newAttr.AttributeName._data = (wchar_t*)str;
-                newAttr.AttributeName._count = 6;
-                newAttr.AttributeName._max = 6;
-                newAttr.AttributeOwner = toCapture.AttributeToCapture.AttributeOwner;
-
-                if (((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->IsA(AOrionDamageableActor::StaticClass())) {
-                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(100, nullptr);
-                }
-
-                static UOrionGameplayCueManager* manager = nullptr;
-
-                if (!manager) {
-                    manager = SDKUtils::GetLastOfType<UOrionGameplayCueManager>();
-                }
-
-                FGameplayTag tag = FGameplayTag();
-                FGameplayCueParameters cueParams = FGameplayCueParameters();
-
-                cueParams.NormalizedMagnitude = 100.0;
-                cueParams.RawMagnitude = 100.0;
-                cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
-                   
-                if (((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->IsA(AOrionCharHero::StaticClass())) {
-                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
-                }
-                else {
-                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
-                }
-
-                reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
-
-                /*
-                if (toCapture.AttributeToCapture.AttributeOwner->IsA(AOrionDamageableActor::StaticClass())) {
-                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.)->OnDamageTaken(100, nullptr);
-
-                    FGameplayTag tag = FGameplayTag();
-                    FGameplayCueParameters cueParams = FGameplayCueParameters();
-
-                    cueParams.NormalizedMagnitude = 100.0;
-                    cueParams.RawMagnitude = 100.0;
-                    cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
-
-                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
-
-                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_AddGameplayCue(tag);
-                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_ExecuteGameplayCue(tag);
-                }//AOrionDamageableActor
-                */
-
-                evaluatedData->Attribute = newAttr;
-
-                evaluatedData->IsValid = true;
-
-                evaluatedData->Handle = *((CG::FActiveGameplayEffectHandle*)EngineLogic::Malloc((sizeof(CG::FActiveGameplayEffectHandle)), 0));
-                evaluatedData->Magnitude = -100.0f;
-                evaluatedData->ModifierOp = CG::EGameplayModOp::Additive;
-
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._data = evaluatedData;
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._count = 1;
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._max = 1;
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledGameplayCuesManually = false;
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledStackCountManually = false;
-                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bTriggerConditionalGameplayEffects = true;
-            }
+            DamageCalculations::DoDamagePipeline(dmg, dmgParams);
 
             return nullptr;
         }
