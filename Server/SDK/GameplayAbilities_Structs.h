@@ -889,7 +889,9 @@ namespace CG
 	{
 	public:
 		TMap<FGameplayEffectAttributeCaptureDefinition, void*> ScopedModifierAggregators;
-		unsigned char                                              UnknownData_1QRB[0xA8 - sizeof(TMap<FGameplayEffectAttributeCaptureDefinition, void*>)];                                  // 0x0000(0x00A8) MISSED OFFSET (PADDING)
+		FGameplayEffectSpec* OwningSpec;
+		TWeakObjectPtr<UAbilitySystemComponent> TargetAbilitySystemComponent;
+		unsigned char                                              UnknownData_1QRB[0xA8 - sizeof(TMap<FGameplayEffectAttributeCaptureDefinition, void*>) - sizeof(FGameplayEffectSpec*) - sizeof(TWeakObjectPtr<UAbilitySystemComponent>)];                                  // 0x0000(0x00A8) MISSED OFFSET (PADDING)
 	};
 
 	/**

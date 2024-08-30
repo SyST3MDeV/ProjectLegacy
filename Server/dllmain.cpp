@@ -17,6 +17,11 @@ namespace SDKUtils {
     }
 
     template <typename T>
+    T* GetLastOfType() {
+        return UObject::FindObjects<T>().back();
+    }
+
+    template <typename T>
     void ListAllObjectsOfType() {
         for (T* obj : GetAllObjectsOfType<T>()) {
             UObject* castObj = reinterpret_cast<UObject*>(obj);
@@ -221,6 +226,10 @@ namespace GameLogic {
     }
 }
 
+namespace DamageCalculations {
+
+}
+
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
 
@@ -245,6 +254,93 @@ namespace Hooking {
             }
         }
 
+        if (object->IsA(UOrionDamage::StaticClass())) {
+            CG::UOrionDamage* dmg = (CG::UOrionDamage*)object;
+
+            ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers = CG::TArray<CG::FGameplayModifierEvaluatedData>();
+
+            CG::FGameplayModifierEvaluatedData* evaluatedData = (CG::FGameplayModifierEvaluatedData*)EngineLogic::Malloc(sizeof(CG::FGameplayModifierEvaluatedData), 0);
+
+            CG::FGameplayEffectAttributeCaptureDefinition toCapture = CG::FGameplayEffectAttributeCaptureDefinition();
+
+            toCapture = dmg->RelevantAttributesToCapture[0];
+
+            if (toCapture.AttributeToCapture.Attribute && (uintptr_t)toCapture.AttributeToCapture.Attribute != 0xffffffff) {
+                CG::FGameplayAttribute newAttr = CG::FGameplayAttribute();
+
+                newAttr.Attribute = toCapture.AttributeToCapture.Attribute;
+                newAttr.AttributeName = CG::FString();
+                void* str = EngineLogic::Malloc(sizeof(L"Health"), 0);
+                const wchar_t* my_str = L"Health";
+                memcpy_s(str, sizeof(L"Health"), my_str, sizeof(L"Health"));
+                newAttr.AttributeName._data = (wchar_t*)str;
+                newAttr.AttributeName._count = 6;
+                newAttr.AttributeName._max = 6;
+                newAttr.AttributeOwner = toCapture.AttributeToCapture.AttributeOwner;
+
+                if (((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->IsA(AOrionDamageableActor::StaticClass())) {
+                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(100, nullptr);
+                }
+
+                static UOrionGameplayCueManager* manager = nullptr;
+
+                if (!manager) {
+                    manager = SDKUtils::GetLastOfType<UOrionGameplayCueManager>();
+                }
+
+                FGameplayTag tag = FGameplayTag();
+                FGameplayCueParameters cueParams = FGameplayCueParameters();
+
+                cueParams.NormalizedMagnitude = 100.0;
+                cueParams.RawMagnitude = 100.0;
+                cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
+                   
+                if (((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->IsA(AOrionCharHero::StaticClass())) {
+                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
+                }
+                else {
+                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+                }
+
+                reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
+
+                /*
+                if (toCapture.AttributeToCapture.AttributeOwner->IsA(AOrionDamageableActor::StaticClass())) {
+                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.)->OnDamageTaken(100, nullptr);
+
+                    FGameplayTag tag = FGameplayTag();
+                    FGameplayCueParameters cueParams = FGameplayCueParameters();
+
+                    cueParams.NormalizedMagnitude = 100.0;
+                    cueParams.RawMagnitude = 100.0;
+                    cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
+
+                    tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+
+                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_AddGameplayCue(tag);
+                    ((AOrionDamageableActor*)((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_ExecuteGameplayCue(tag);
+                }//AOrionDamageableActor
+                */
+
+                evaluatedData->Attribute = newAttr;
+
+                evaluatedData->IsValid = true;
+
+                evaluatedData->Handle = *((CG::FActiveGameplayEffectHandle*)EngineLogic::Malloc((sizeof(CG::FActiveGameplayEffectHandle)), 0));
+                evaluatedData->Magnitude = -100.0f;
+                evaluatedData->ModifierOp = CG::EGameplayModOp::Additive;
+
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._data = evaluatedData;
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._count = 1;
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._max = 1;
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledGameplayCuesManually = false;
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bHandledStackCountManually = false;
+                ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.bTriggerConditionalGameplayEffects = true;
+            }
+
+            return nullptr;
+        }
+
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
     }
 
@@ -254,6 +350,12 @@ namespace Hooking {
 
     __int64 GetNetModeHook() {
         return 2;
+    }
+
+    void* origStatManagerCrash = nullptr;
+
+    void StatManagerCrashHook() {
+        return;
     }
 
     void InitHooking() {
@@ -282,6 +384,12 @@ namespace Hooking {
         MH_CreateHook(uengineGetNetModeHook, reinterpret_cast<void*>(GetNetModeHook), &uengineGetNetMode);
 
         MH_EnableHook(uengineGetNetModeHook);
+
+        void* statManagerCrashHook = (void*)(Globals::ModuleBase + 0x37BF70);
+
+        MH_CreateHook(statManagerCrashHook, reinterpret_cast<void*>(StatManagerCrashHook), &origStatManagerCrash);
+
+        MH_EnableHook(statManagerCrashHook);
     }
 }
 
@@ -302,7 +410,7 @@ void OnMatchInit() {
     GameLogic::AddControllerToTeam(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), EOrionTeam::TeamBlue);
 
     std::cout << "Setting local player hero data..." << std::endl;
-    GameLogic::SetControllerHeroData(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_ArcBlade.HeroData_ArcBlade"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Arcblade.MasterSkin_Arcblade"));
+    GameLogic::SetControllerHeroData(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
 
     std::cout << "Starting the match..." << std::endl;
     GameLogic::StartMatch();
@@ -316,7 +424,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Agora_P", L"");
+    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C");
 
     Sleep(20 * 1000);
 
