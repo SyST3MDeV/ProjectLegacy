@@ -1,0 +1,29 @@
+﻿/**
+ * Name: Paragon
+ * Version: v34
+ */
+
+#include "pch.h"
+
+namespace CG
+{
+	// --------------------------------------------------
+	// # Structs Functions
+	// --------------------------------------------------
+	/**
+	 * Function:
+	 * 		RVA    -> 0x00000000
+	 * 		Name   -> PredefinedFunction UGE_CombatSlow_Shooter_AfterFall_C.StaticClass
+	 * 		Flags  -> (Predefined, Static)
+	 */
+	UClass* UGE_CombatSlow_Shooter_AfterFall_C::StaticClass()
+	{
+		static UClass* ptr = nullptr;
+		if (!ptr)
+			ptr = UObject::FindClass("BlueprintGeneratedClass GE_CombatSlow_Shooter_AfterFall.GE_CombatSlow_Shooter_AfterFall_C");
+		return ptr;
+	}
+
+}
+
+

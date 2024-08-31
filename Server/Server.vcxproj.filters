@@ -16,9 +16,6 @@
     <Filter Include="SDK">
       <UniqueIdentifier>{15313010-defd-45cf-92cc-5351f99c527e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="MinHook">
-      <UniqueIdentifier>{5c494cb4-85df-4657-8033-a634c2b0ebce}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
