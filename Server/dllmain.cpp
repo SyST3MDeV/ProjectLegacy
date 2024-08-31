@@ -370,7 +370,7 @@ namespace Networking {
 
     UActorChannel* GetChannelForConnectionAndActor(UNetConnection* connection, AActor* actor) {
         for (UActorChannel* channel : channels) {
-            if (channel && channel->Connection == connection && channel->Actor == actor) {
+            if (channel && channel->Connection == connection && channel->Actor == actor && !channel->closing) {
                 return channel;
             }
         }
@@ -436,6 +436,7 @@ namespace Networking {
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
 
+            reinterpret_cast<void(*)(UNetConnection*)>(Globals::ModuleBase + 0x1FFB5A0)(connection);
         }
     }
 }
