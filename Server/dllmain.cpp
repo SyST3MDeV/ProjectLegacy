@@ -132,6 +132,10 @@ namespace EngineLogic {
     void* Malloc(__int64 size, unsigned int alignment) {
         return reinterpret_cast<void* (__thiscall*)(__int64 size, unsigned int alignment)>(Globals::ModuleBase + 0xDFB9F0)(size, alignment);
     }
+
+    void LimitFramerateForServer() {
+        ExecuteConsoleCommand(L"t.maxfps 20");
+    }
 }
 
 namespace GameLogic {
@@ -319,6 +323,8 @@ namespace DamageCalculations {
 
 namespace Networking {
     void Listen() {
+        EngineLogic::LimitFramerateForServer();
+
         reinterpret_cast<void(__thiscall*)(UEngine*, UWorld*, FName, FName)>(Globals::ModuleBase + 0x22981c0)(Globals::GetEngine(), Globals::GetGWorld(), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"));
 
         CG::UIpNetDriver* NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
@@ -335,6 +341,79 @@ namespace Networking {
         reinterpret_cast<void(__thiscall*)(UIpNetDriver*, __int64, FURL*, bool, FString*)>(Globals::ModuleBase + 0x3290920)(NetDriver, reinterpret_cast<__int64>(Globals::GetGWorld()) + 0x28, url, false, err);
 
         reinterpret_cast<void(__thiscall*)(CG::UNetDriver*, CG::UWorld*)>(Globals::ModuleBase + 0x1FFA320)(NetDriver, Globals::GetGWorld());
+    }
+
+    UNetDriver* GetNetDriver() {
+        return Globals::GetGWorld()->NetDriver;
+    }
+
+    std::vector<AActor*> GetActorConsiderList() {
+        std::vector<AActor*> allActors = SDKUtils::GetAllObjectsOfType<AActor>();
+
+        std::vector<AActor*> actorsToConsider = std::vector<AActor*>();
+
+        for (AActor* actor : allActors) {
+            if (actor->RemoteRole == ENetRole::ROLE_None)
+                continue;
+
+            reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver());
+
+            actorsToConsider.push_back(actor);
+        }
+
+        return actorsToConsider;
+    }
+
+    static std::vector<UActorChannel*> channels = std::vector<UActorChannel*>();
+
+    UActorChannel* GetChannelForConnectionAndActor(UNetConnection* connection, AActor* actor) {
+        for (UActorChannel* channel : channels) {
+            if (channel && channel->Connection == connection && channel->Actor == actor) {
+                return channel;
+            }
+        }
+
+        return nullptr;
+    }
+
+    enum EChannelType
+    {
+        CHTYPE_None = 0,  // Invalid type.
+        CHTYPE_Control = 1,  // Connection control.
+        CHTYPE_Actor = 2,  // Actor-update channel.
+        CHTYPE_File = 3,  // Binary file transfer.
+        CHTYPE_Voice = 4,  // VoIP data channel
+        CHTYPE_MAX = 8,  // Maximum.
+    };
+
+    void Replicate() {
+        std::vector<AActor*> considerList = GetActorConsiderList();
+
+        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
+            UNetConnection* connection = GetNetDriver()->ClientConnections[i];
+
+            if (connection->PlayerController)
+                reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(connection->PlayerController);
+
+            for (AActor* actor : considerList) {
+                if (actor->IsA(APlayerController::StaticClass()) && actor != connection->PlayerController)
+                    continue;
+
+                UActorChannel* channel = GetChannelForConnectionAndActor(connection, actor);
+
+                if (!channel) {
+                    channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + 0x1FDD9E0)(connection, EChannelType::CHTYPE_Actor, true, -1);
+                    channels.push_back(channel);
+                }
+            }
+        }
+
+        for (UActorChannel* channel : channels) {
+            if (channel && channel->Actor) {
+                reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel); //ReplicateActor
+                reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
+            }
+        }
     }
 }
 
@@ -393,6 +472,8 @@ namespace Hooking {
 
     void NetDriverTickFlushHook(float DeltaTime) {
         reinterpret_cast<void(*)(float)>(origNetDriverTickFlush)(DeltaTime);
+
+        Networking::Replicate();
     }
 
     void InitHooking() {
