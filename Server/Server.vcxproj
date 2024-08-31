@@ -157,6 +157,8 @@
     <ClCompile Include="SDK\CoreUObject_Package.cpp" />
     <ClCompile Include="SDK\Engine_Package.cpp" />
     <ClCompile Include="SDK\Global_Package.cpp" />
+    <ClCompile Include="SDK\OnlineSubsystemUtils_Package.cpp" />
+    <ClCompile Include="SDK\OnlineSubsystem_Package.cpp" />
     <ClCompile Include="SDK\OrionGame_Package.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

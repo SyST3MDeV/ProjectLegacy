@@ -58,6 +58,16 @@ namespace Globals {
         return kismetStringLibrary;
     }
 
+    UEngine* GetEngine() {
+        static UEngine* engine = nullptr;
+
+        if (!engine) {
+            engine = SDKUtils::GetLastOfType<UEngine>();
+        }
+
+        return engine;
+    }
+
     template <typename T>
     T* GetLocalPlayerController() {
         return reinterpret_cast<T*>(GetGWorld()->OwningGameInstance->LocalPlayers[0]->PlayerController);
@@ -307,6 +317,27 @@ namespace DamageCalculations {
     }
 }
 
+namespace Networking {
+    void Listen() {
+        reinterpret_cast<void(__thiscall*)(UEngine*, UWorld*, FName, FName)>(Globals::ModuleBase + 0x22981c0)(Globals::GetEngine(), Globals::GetGWorld(), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"));
+
+        CG::UIpNetDriver* NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
+
+        Globals::GetGWorld()->NetDriver = NetDriver;
+
+        FURL* url = (FURL*)EngineLogic::Malloc(sizeof(FURL), 0);
+
+        url->Port = 7777;
+        url->Valid = 1;
+
+        FString* err = (FString*)EngineLogic::Malloc(sizeof(FString), 0);
+
+        reinterpret_cast<void(__thiscall*)(UIpNetDriver*, __int64, FURL*, bool, FString*)>(Globals::ModuleBase + 0x3290920)(NetDriver, reinterpret_cast<__int64>(Globals::GetGWorld()) + 0x28, url, false, err);
+
+        reinterpret_cast<void(__thiscall*)(CG::UNetDriver*, CG::UWorld*)>(Globals::ModuleBase + 0x1FFA320)(NetDriver, Globals::GetGWorld());
+    }
+}
+
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
 
@@ -358,6 +389,12 @@ namespace Hooking {
         return;
     }
 
+    void* origNetDriverTickFlush = nullptr;
+
+    void NetDriverTickFlushHook(float DeltaTime) {
+        reinterpret_cast<void(*)(float)>(origNetDriverTickFlush)(DeltaTime);
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -390,6 +427,12 @@ namespace Hooking {
         MH_CreateHook(statManagerCrashHook, reinterpret_cast<void*>(StatManagerCrashHook), &origStatManagerCrash);
 
         MH_EnableHook(statManagerCrashHook);
+
+        void* tickFlushHook = (void*)(Globals::ModuleBase + 0x1ffc780);
+
+        MH_CreateHook(tickFlushHook, reinterpret_cast<void*>(NetDriverTickFlushHook), &origNetDriverTickFlush);
+
+        MH_EnableHook(tickFlushHook);
     }
 }
 
@@ -406,6 +449,7 @@ void OnMatchInit() {
     std::cout << "Setting up teams..." << std::endl;
     GameLogic::SetupTeams();
 
+    /*
     std::cout << "Adding local player to team blue..." << std::endl;
     GameLogic::AddControllerToTeam(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), EOrionTeam::TeamBlue);
 
@@ -414,9 +458,13 @@ void OnMatchInit() {
 
     std::cout << "Starting the match..." << std::endl;
     GameLogic::StartMatch();
+    */
 
     std::cout << "Hiding loading screen..." << std::endl;
     GameLogic::HideLoadingScreen();
+
+    std::cout << "Listening for connections..." << std::endl;
+    Networking::Listen();
 }
 
 void OnGameInit() {
