@@ -476,6 +476,14 @@ namespace Hooking {
         Networking::Replicate();
     }
 
+    void* origGameModeMOBAPostLogin = nullptr;
+
+    void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
+        GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
+        GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
+        GameLogic::StartMatch();
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -514,6 +522,12 @@ namespace Hooking {
         MH_CreateHook(tickFlushHook, reinterpret_cast<void*>(NetDriverTickFlushHook), &origNetDriverTickFlush);
 
         MH_EnableHook(tickFlushHook);
+
+        void* postLoginHook = (void*)(Globals::ModuleBase + 0x48F1E0);
+
+        MH_CreateHook(postLoginHook, reinterpret_cast<void*>(GameModeMOBAPostLogin), &origGameModeMOBAPostLogin);
+
+        MH_EnableHook(postLoginHook);
     }
 }
 
