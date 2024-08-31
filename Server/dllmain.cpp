@@ -344,6 +344,8 @@ namespace Networking {
     }
 
     UNetDriver* GetNetDriver() {
+        if (!Globals::GetGWorld()->NetDriver)
+            Globals::GetGWorld()->NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
         return Globals::GetGWorld()->NetDriver;
     }
 
@@ -353,7 +355,7 @@ namespace Networking {
         std::vector<AActor*> actorsToConsider = std::vector<AActor*>();
 
         for (AActor* actor : allActors) {
-            if (actor->RemoteRole == ENetRole::ROLE_None)
+            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos)
                 continue;
 
             reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver());
@@ -396,27 +398,44 @@ namespace Networking {
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
 
+            if (connection->OwningActor == nullptr)
+                continue;
+
             if (connection->PlayerController)
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(connection->PlayerController);
 
             for (AActor* actor : considerList) {
+                if (!actor)
+                    continue;
+
                 if (actor->IsA(APlayerController::StaticClass()) && actor != connection->PlayerController)
                     continue;
 
                 UActorChannel* channel = GetChannelForConnectionAndActor(connection, actor);
 
                 if (!channel) {
+                    std::cout << "Opening channel for: " << actor->GetFullName() << std::endl;
                     channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + 0x1FDD9E0)(connection, EChannelType::CHTYPE_Actor, true, -1);
-                    channels.push_back(channel);
+
+                    if (channel) {
+                        reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(channel, actor);
+
+                        channels.push_back(channel);
+                    }
                 }
             }
         }
 
         for (UActorChannel* channel : channels) {
-            if (channel && channel->Actor) {
+            if (channel && channel->Actor && !channel->closing) {
                 reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel); //ReplicateActor
                 reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
             }
+        }
+
+        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
+            UNetConnection* connection = GetNetDriver()->ClientConnections[i];
+
         }
     }
 }
@@ -517,8 +536,8 @@ namespace Hooking {
 
     void* origNotifyAcceptingChannel = nullptr;
 
-    EAcceptConnection NotifyAcceptingChannelHook(UWorld* world, UChannel* channel) {
-        return EAcceptConnection::Accept;
+    bool NotifyAcceptingChannelHook(UWorld* world, UChannel* channel) {
+        return true;
     }
 
     void* origNotifyControlMessage = nullptr;
@@ -534,6 +553,18 @@ namespace Hooking {
 
     void GameModeMOBAPreLoginHook() {
         return;
+    }
+
+    void* origUNetConnectionClose = nullptr;
+
+    void UNetConnectionCloseHook(UNetConnection* connection) {
+        return;
+    }
+
+    void* origCheckAbandonMatchTimer = nullptr;
+
+    bool CheckAbandonMatchTimerHook(AOrionGameMode_MOBA* gamemode) {
+        return false;
     }
 
     void InitHooking() {
@@ -604,6 +635,20 @@ namespace Hooking {
         MH_CreateHook(notifyControlMessage, reinterpret_cast<void*>(NotifyControlMessage), &origNotifyControlMessage);
 
         MH_EnableHook(notifyControlMessage);
+
+        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1FDD5A0);
+
+        MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(UNetConnectionCloseHook), &origUNetConnectionClose);
+
+        MH_EnableHook(unetConnectionClose);
+
+        void* checkAbandonMatchTimer = (void*)(Globals::ModuleBase + 0x471800);
+
+        MH_CreateHook(checkAbandonMatchTimer, reinterpret_cast<void*>(CheckAbandonMatchTimerHook), &origCheckAbandonMatchTimer);
+
+        MH_EnableHook(checkAbandonMatchTimer);
+
+        //
 
         //void* gameModeMOBAPreLoginHook = (void*)(Globals::ModuleBase + 0x4903A0);
 

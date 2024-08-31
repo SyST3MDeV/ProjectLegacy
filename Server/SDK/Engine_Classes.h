@@ -9170,7 +9170,8 @@ namespace CG
 	{
 	public:
 		class UNetConnection*                                      Connection;                                              // 0x0028(0x0008) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
-		unsigned char                                              UnknownData_QLYX[0x38];                                  // 0x0030(0x0038) MISSED OFFSET (PADDING)
+		bool closing;
+		unsigned char                                              UnknownData_QLYX[0x38 - sizeof(bool)];                                  // 0x0030(0x0038) MISSED OFFSET (PADDING)
 
 	public:
 		static UClass* StaticClass();

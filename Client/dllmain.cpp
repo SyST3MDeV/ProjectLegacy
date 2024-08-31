@@ -173,9 +173,20 @@ namespace Hooking {
 
     void* origInitializeMCPProfile = nullptr;
 
+    bool initUI = false;
+
     bool InitializeMCPProfileHook(APlayerControllerCommon* playercontroller) {
-        GameLogic::SetUIState(EOrionUIState::Match);
+        if (!initUI) {
+            initUI = true;
+            GameLogic::SetUIState(EOrionUIState::Match);
+        }
         return true;
+    }
+
+    void* origReturnToMainMenu = nullptr;
+
+    void ReturnToMainMenuHook() {
+        return;
     }
 
     void InitHooking() {
@@ -192,6 +203,14 @@ namespace Hooking {
         MH_CreateHook(initMCPProfile, reinterpret_cast<void*>(InitializeMCPProfileHook), &origInitializeMCPProfile);
 
         MH_EnableHook(initMCPProfile);
+
+        void* returnToMainMenu = (void*)(Globals::ModuleBase + 0x6319C0);
+
+        MH_CreateHook(returnToMainMenu, reinterpret_cast<void*>(ReturnToMainMenuHook), &origReturnToMainMenu);
+
+        MH_EnableHook(returnToMainMenu);
+
+        //
     }
 }
 
