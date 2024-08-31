@@ -174,6 +174,7 @@ namespace Hooking {
     void* origInitializeMCPProfile = nullptr;
 
     bool InitializeMCPProfileHook(APlayerControllerCommon* playercontroller) {
+        GameLogic::SetUIState(EOrionUIState::Match);
         return true;
     }
 
@@ -217,8 +218,6 @@ void Main() {
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 
     Hooking::InitHooking();
-
-    Sleep(25 * 1000);
 
     OnGameInit();
 

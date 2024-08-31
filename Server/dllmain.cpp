@@ -387,6 +387,10 @@ namespace Networking {
     };
 
     void Replicate() {
+        if (!GetNetDriver()) {
+            Globals::GetGWorld()->NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
+        }
+
         std::vector<AActor*> considerList = GetActorConsiderList();
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
@@ -479,9 +483,57 @@ namespace Hooking {
     void* origGameModeMOBAPostLogin = nullptr;
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
-        GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
-        GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
-        GameLogic::StartMatch();
+        if (controller != Globals::GetLocalPlayerController< AOrionPlayerController_Game>()) {
+            GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
+            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
+            GameLogic::StartMatch();
+        }
+        else {
+            reinterpret_cast<void(*)(AOrionGameMode_MOBA * gamemode, AOrionPlayerController_Game * controller)>(origGameModeMOBAPostLogin)(gamemode, controller);
+        }
+    }
+
+    enum EAcceptConnection
+    {
+        /** Reject the connection */
+        Reject,
+        /** Accept the connection */
+        Accept,
+        /** Ignore the connection, sending no reply, while server traveling */
+        Ignore
+    };
+
+    void* origNotifyAcceptingConnection = nullptr;
+
+    EAcceptConnection NotifyAcceptingConnectionHook(UWorld* world) {
+        return EAcceptConnection::Accept;
+    }
+
+    void* origNotifyAcceptedConnection = nullptr;
+
+    EAcceptConnection NotifyAcceptedConnectionHook(UWorld* world, UNetConnection* connection) {
+        return EAcceptConnection::Accept;
+    }
+
+    void* origNotifyAcceptingChannel = nullptr;
+
+    EAcceptConnection NotifyAcceptingChannelHook(UWorld* world, UChannel* channel) {
+        return EAcceptConnection::Accept;
+    }
+
+    void* origNotifyControlMessage = nullptr;
+
+    void NotifyControlMessage(UWorld* world, UNetConnection* connection, __int8 a3, void* a4) {
+        if (!Globals::GetGWorld()->NetDriver) {
+            Globals::GetGWorld()->NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
+        }
+        return reinterpret_cast<void(*)(__int64, UNetConnection * connection, __int8 a3, void* a4)>(origNotifyControlMessage)(reinterpret_cast<__int64>(Globals::GetGWorld()) + 0x28, connection, a3, a4);
+    }
+
+    void* origGameModeMOBAPreLogin = nullptr;
+
+    void GameModeMOBAPreLoginHook() {
+        return;
     }
 
     void InitHooking() {
@@ -528,6 +580,36 @@ namespace Hooking {
         MH_CreateHook(postLoginHook, reinterpret_cast<void*>(GameModeMOBAPostLogin), &origGameModeMOBAPostLogin);
 
         MH_EnableHook(postLoginHook);
+
+        void* notifyAcceptingConnection = (void*)(Globals::ModuleBase + 0x2314B80);
+
+        MH_CreateHook(notifyAcceptingConnection, reinterpret_cast<void*>(NotifyAcceptingConnectionHook), &origNotifyAcceptingConnection);
+
+        MH_EnableHook(notifyAcceptingConnection);
+
+        void* notifyAcceptedConnection = (void*)(Globals::ModuleBase + 0x2314710);
+
+        MH_CreateHook(notifyAcceptedConnection, reinterpret_cast<void*>(NotifyAcceptedConnectionHook), &origNotifyAcceptedConnection);
+
+        MH_EnableHook(notifyAcceptedConnection);
+
+        void* notifyAcceptingChannel = (void*)(Globals::ModuleBase + 0x2314890);
+
+        MH_CreateHook(notifyAcceptingChannel, reinterpret_cast<void*>(NotifyAcceptingChannelHook), &origNotifyAcceptingChannel);
+
+        MH_EnableHook(notifyAcceptingChannel);
+
+        void* notifyControlMessage = (void*)(Globals::ModuleBase + 0x23156C0);
+
+        MH_CreateHook(notifyControlMessage, reinterpret_cast<void*>(NotifyControlMessage), &origNotifyControlMessage);
+
+        MH_EnableHook(notifyControlMessage);
+
+        //void* gameModeMOBAPreLoginHook = (void*)(Globals::ModuleBase + 0x4903A0);
+
+        //MH_CreateHook(gameModeMOBAPreLoginHook, reinterpret_cast<void*>(GameModeMOBAPreLoginHook), &origGameModeMOBAPreLogin);
+
+        //MH_EnableHook(gameModeMOBAPreLoginHook);
     }
 }
 
