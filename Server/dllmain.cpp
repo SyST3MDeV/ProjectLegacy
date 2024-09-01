@@ -235,6 +235,10 @@ namespace GameLogic {
         pc->ServerRestartPlayer();
     }
 
+    void RestartClient(AOrionPlayerController_Game* pc) {
+        pc->Possess(pc->Pawn);
+    }
+
     void HideLoadingScreen() {
         EngineLogic::ExecuteConsoleCommand(L"hideloadingscreen");
     }
@@ -366,11 +370,14 @@ namespace Networking {
         return actorsToConsider;
     }
 
-    static std::vector<UActorChannel*> channels = std::vector<UActorChannel*>();
-
     UActorChannel* GetChannelForConnectionAndActor(UNetConnection* connection, AActor* actor) {
-        for (UActorChannel* channel : channels) {
-            if (channel && channel->Connection == connection && channel->Actor == actor && !channel->closing) {
+        for (int i = 0; i < connection->OpenChannels.Count(); i++) {
+            UActorChannel* channel = reinterpret_cast<UActorChannel*>(connection->OpenChannels[i]);
+
+            if (channel && !channel->IsA(UActorChannel::StaticClass()))
+                continue;
+
+            if (channel && channel->Connection == connection && channel->Actor == actor) {
                 return channel;
             }
         }
@@ -388,10 +395,28 @@ namespace Networking {
         CHTYPE_MAX = 8,  // Maximum.
     };
 
+    void AddChannel(UNetConnection* connection, UChannel* channel) {
+        if (connection->OpenChannels._max != 4000) {
+            UChannel** newData = (UChannel**)EngineLogic::Malloc(sizeof(UChannel*) * 4000, 0);
+
+            for (int i = 0; i < connection->OpenChannels._count; i++) {
+                newData[i] = connection->OpenChannels[i];
+            }
+
+            connection->OpenChannels._max = 4000;
+            connection->OpenChannels._data = newData;
+        }
+
+        connection->OpenChannels._data[connection->OpenChannels._count] = channel;
+        connection->OpenChannels._count++;
+    }
+
     void Replicate() {
         if (!GetNetDriver()) {
             Globals::GetGWorld()->NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
         }
+
+        ++GetNetDriver()->ReplicationFrame;
 
         std::vector<AActor*> considerList = GetActorConsiderList();
 
@@ -408,6 +433,9 @@ namespace Networking {
                 if (!actor)
                     continue;
 
+                if (actor->bActorIsBeingDestroyed)
+                    continue;
+
                 if (actor->IsA(APlayerController::StaticClass()) && actor != connection->PlayerController)
                     continue;
 
@@ -420,23 +448,31 @@ namespace Networking {
                     if (channel) {
                         reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(channel, actor);
 
-                        channels.push_back(channel);
+                        AddChannel(connection, channel);
                     }
                 }
             }
         }
 
-        for (UActorChannel* channel : channels) {
-            if (channel && channel->Actor && !channel->closing) {
-                reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel); //ReplicateActor
-                reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
-            }
-        }
+        
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
 
-            reinterpret_cast<void(*)(UNetConnection*)>(Globals::ModuleBase + 0x1FFB5A0)(connection);
+            for (int i = 0; i < connection->OpenChannels.Count(); i++) {
+                UActorChannel* channel = reinterpret_cast<UActorChannel*>(connection->OpenChannels[i]);
+
+                if (!channel->IsA(UActorChannel::StaticClass()))
+                    continue;
+
+                if (channel && channel->Actor && channel->Connection) {
+                    channel->closing = false; // :(
+                    reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel);
+                    //reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
+                }
+            }
+
+            //reinterpret_cast<void(*)(UNetConnection*)>(Globals::ModuleBase + 0x1FFB5A0)(connection);
         }
     }
 }
@@ -500,6 +536,13 @@ namespace Hooking {
         Networking::Replicate();
     }
 
+    void DelayedPCSetup(AOrionPlayerController_Game* pc) {
+        Sleep(25 * 1000);
+
+        std::cout << "Setting up new player..." << std::endl;
+        GameLogic::RestartClient(pc);
+    }
+
     void* origGameModeMOBAPostLogin = nullptr;
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
@@ -507,6 +550,10 @@ namespace Hooking {
             GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
             GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
             GameLogic::StartMatch();
+
+            //std::thread t(DelayedPCSetup, controller);
+
+            //t.detach();
         }
         else {
             reinterpret_cast<void(*)(AOrionGameMode_MOBA * gamemode, AOrionPlayerController_Game * controller)>(origGameModeMOBAPostLogin)(gamemode, controller);
@@ -565,6 +612,43 @@ namespace Hooking {
     void* origCheckAbandonMatchTimer = nullptr;
 
     bool CheckAbandonMatchTimerHook(AOrionGameMode_MOBA* gamemode) {
+        return false;
+    }
+
+    void* origHasClientLoadedCurrentWorld = nullptr;
+
+    bool HasClientLoadedCurrentWorldHook(AGameMode* a1, APlayerController* a2) {
+        return !(a2 == Globals::GetLocalPlayerController<APlayerController>());
+    }
+
+    /*
+    * __int64 __fastcall AOrionGameMode_MOBA::GetDefaultPawnClassForController_Implementation(
+        AOrionGameMode_MOBA *this,
+        struct AController *a2)
+    */
+
+    void* origGetDefaultPawnClass = nullptr;
+
+    __int64 GetDefaultPawnClassHook(AOrionGameMode_MOBA* a1, AController* a2) {
+        if (a2->IsA(AOrionPlayerController_Game::StaticClass())) {
+            AOrionPlayerController_Game* castPC = reinterpret_cast<AOrionPlayerController_Game*>(a2);
+
+            AOrionPlayerState_Game* castPS = reinterpret_cast<AOrionPlayerState_Game*>(castPC->PlayerState);
+
+            FOrionHeroDataSpec spec = FOrionHeroDataSpec();
+
+            spec.HeroData = UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang");
+            spec.Skin = UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang");
+
+            castPS->HeroDataSpec = spec;
+        }
+
+        return reinterpret_cast<__int64(*)(AOrionGameMode_MOBA * a1, AController * a2)>(origGetDefaultPawnClass)(a1, a2);
+    }
+
+    void* origIsReplicationPaused = nullptr;
+
+    bool IsReplicationPausedHook(void* a1, void* a2) {
         return false;
     }
 
@@ -649,6 +733,26 @@ namespace Hooking {
 
         MH_EnableHook(checkAbandonMatchTimer);
 
+        void* hasClientLoadedCurrentWorld = (void*)(Globals::ModuleBase + 0x1E6A160);
+
+        MH_CreateHook(hasClientLoadedCurrentWorld, reinterpret_cast<void*>(HasClientLoadedCurrentWorldHook), &origHasClientLoadedCurrentWorld);
+
+        MH_EnableHook(hasClientLoadedCurrentWorld);
+
+        void* getDefaultPawnClass = (void*)(Globals::ModuleBase + 0x47A050);
+
+        MH_CreateHook(getDefaultPawnClass, reinterpret_cast<void*>(GetDefaultPawnClassHook), &origGetDefaultPawnClass);
+
+        MH_EnableHook(getDefaultPawnClass);
+
+        void* isReplicationPaused = (void*)(Globals::ModuleBase + 0x4BA9F0);
+
+        MH_CreateHook(isReplicationPaused, reinterpret_cast<void*>(IsReplicationPausedHook), &origIsReplicationPaused);
+
+        MH_EnableHook(isReplicationPaused);
+
+        //
+
         //
 
         //void* gameModeMOBAPreLoginHook = (void*)(Globals::ModuleBase + 0x4903A0);
@@ -703,7 +807,19 @@ void OnGameInit() {
 }
 
 void MainLoop() {
+    while (!GetAsyncKeyState(VK_F7)) {
 
+    }
+
+    for (AOrionPlayerController_Game* pc : SDKUtils::GetAllObjectsOfType<AOrionPlayerController_Game>()) {
+        if (pc->GetFullName().find("Default") == std::string::npos && pc != Globals::GetLocalPlayerController<AOrionPlayerController_Game>()) {
+            GameLogic::RestartClient(pc);
+        }
+    }
+
+    while (GetAsyncKeyState(VK_F7)) {
+
+    }
 }
 
 void Main() {

@@ -13845,7 +13845,9 @@ namespace CG
 		class FName                                                NetDriverName;                                           // 0x00E0(0x0008) ZeroConstructor, Config, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
 		unsigned char                                              UnknownData_U6H9[0x8];                                   // 0x00E8(0x0008) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
 		float                                                      Time;                                                    // 0x00F0(0x0004) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
-		unsigned char                                              UnknownData_2X0G[0x2C4];                                 // 0x00F4(0x02C4) MISSED OFFSET (PADDING)
+		unsigned char                                              UnknownData_2X0F[0x190];
+		int32_t ReplicationFrame;
+		unsigned char                                              UnknownData_2X0G[0x130];                                 // 0x00F4(0x02C4) MISSED OFFSET (PADDING)
 
 	public:
 		static UClass* StaticClass();
