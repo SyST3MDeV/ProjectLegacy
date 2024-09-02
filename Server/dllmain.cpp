@@ -222,9 +222,10 @@ namespace GameLogic {
         reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->ServerSetPlayerHeroDataSpec(spec);
 
         controller->HeroData = heroData;
-        controller->HeroName = L"Kwang";
 
         reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->HeroDataSpec = spec;
+
+        reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_HeroDataSpec(FOrionHeroDataSpec());
     }
 
     void SetUIState(EOrionUIState state) {
@@ -374,7 +375,7 @@ namespace Networking {
         for (int i = 0; i < connection->OpenChannels.Count(); i++) {
             UActorChannel* channel = reinterpret_cast<UActorChannel*>(connection->OpenChannels[i]);
 
-            if (channel && !channel->IsA(UActorChannel::StaticClass()))
+            if (channel && (!channel->IsA(UActorChannel::StaticClass())))
                 continue;
 
             if (channel && channel->Connection == connection && channel->Actor == actor) {
@@ -454,7 +455,7 @@ namespace Networking {
             }
         }
 
-        
+
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
@@ -465,8 +466,8 @@ namespace Networking {
                 if (!channel->IsA(UActorChannel::StaticClass()))
                     continue;
 
-                if (channel && channel->Actor && channel->Connection) {
-                    channel->closing = false; // :(
+                if (channel && channel->Actor && channel->Connection && !channel->closing) {
+                    //channel->closing = false; // :(
                     reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel);
                     //reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
                 }
@@ -499,6 +500,8 @@ namespace Hooking {
 
                 FuncPtrsToProcInGameThread.pop_back();
             }
+
+            procingCurrentFuncPtrs = false;
         }
 
         if (object->IsA(UOrionDamage::StaticClass())) {
@@ -725,7 +728,7 @@ namespace Hooking {
 
         MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(UNetConnectionCloseHook), &origUNetConnectionClose);
 
-        MH_EnableHook(unetConnectionClose);
+        //MH_EnableHook(unetConnectionClose);
 
         void* checkAbandonMatchTimer = (void*)(Globals::ModuleBase + 0x471800);
 
@@ -806,16 +809,24 @@ void OnGameInit() {
     Hooking::ProcInGameThread(OnMatchInit);
 }
 
+AOrionPlayerController_Game* pcToOnRep = nullptr;
+
+void PlayerInit() {
+    /*
+    pcToOnRep->Possess(pcToOnRep->Pawn);
+    pcToOnRep->OnRep_Pawn();
+    pcToOnRep->OnRep_PlayerState();
+
+    Globals::GetGameState<AOrionGameState_MOBA>()->OnRep_Teams();
+    */
+}
+
 void MainLoop() {
     while (!GetAsyncKeyState(VK_F7)) {
 
     }
 
-    for (AOrionPlayerController_Game* pc : SDKUtils::GetAllObjectsOfType<AOrionPlayerController_Game>()) {
-        if (pc->GetFullName().find("Default") == std::string::npos && pc != Globals::GetLocalPlayerController<AOrionPlayerController_Game>()) {
-            GameLogic::RestartClient(pc);
-        }
-    }
+    reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->ClientReset();
 
     while (GetAsyncKeyState(VK_F7)) {
 

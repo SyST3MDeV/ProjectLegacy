@@ -166,6 +166,8 @@ namespace Hooking {
 
                 FuncPtrsToProcInGameThread.pop_back();
             }
+
+            procingCurrentFuncPtrs = false;
         }
 
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
@@ -187,6 +189,12 @@ namespace Hooking {
 
     void ReturnToMainMenuHook() {
         return;
+    }
+    
+    void* origIsPakAllowed = nullptr;
+
+    bool IsPakAllowedHook() {
+        return true;
     }
 
     void InitHooking() {
@@ -210,7 +218,11 @@ namespace Hooking {
 
         MH_EnableHook(returnToMainMenu);
 
-        //
+        void* isPakAllowed = (void*)(Globals::ModuleBase + 0x22B1290);
+
+        MH_CreateHook(isPakAllowed, reinterpret_cast<void*>(IsPakAllowedHook), &origIsPakAllowed);
+
+        MH_EnableHook(isPakAllowed);
     }
 }
 
@@ -225,8 +237,25 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 }
 
-void MainLoop() {
+AOrionPlayerController_Game* pcToOnRep = nullptr;
 
+void PlayerInit() {
+    pcToOnRep->OnRep_Pawn();
+    pcToOnRep->OnRep_PlayerState();
+}
+
+
+void MainLoop() {
+    while (!GetAsyncKeyState(VK_F8)) {
+
+    }
+
+    pcToOnRep = Globals::GetLocalPlayerController<AOrionPlayerController_Game>();
+    Hooking::ProcInGameThread(PlayerInit);
+
+    while (GetAsyncKeyState(VK_F8)) {
+
+    }
 }
 
 void Main() {
