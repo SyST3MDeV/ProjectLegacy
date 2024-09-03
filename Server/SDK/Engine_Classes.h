@@ -13866,6 +13866,14 @@ namespace CG
 		static UClass* StaticClass();
 	};
 
+	enum EConnectionState : int
+	{
+		USOCK_Invalid = 0, // Connection is invalid, possibly uninitialized.
+		USOCK_Closed = 1, // Connection permanently closed.
+		USOCK_Pending = 2, // Connection is awaiting connection.
+		USOCK_Open = 3, // Connection is open.
+	};
+
 	/**
 	 * Class Engine.NetConnection
 	 * Size -> 0x33690 (FullSize[0x336D8] - InheritedSize[0x0048])
@@ -13882,7 +13890,9 @@ namespace CG
 		class AActor*                                              OwningActor;                                             // 0x0090(0x0008) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
 		int32_t                                                    MaxPacket;                                               // 0x0098(0x0004) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
 		bool                                                       InternalAck : 1;                                         // 0x009C(0x0001) BIT_FIELD NoDestructor, NativeAccessSpecifierPublic
-		unsigned char                                              UnknownData_FI8R[0xB3];                                  // 0x009D(0x00B3) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
+		unsigned char                                              UnknownData_FI8R[0x87];                                  // 0x009D(0x00B3) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
+		EConnectionState State;
+		unsigned char                                              UnknownData_FI8X[0x28];
 		struct FUniqueNetIdRepl                                    PlayerId;                                                // 0x0150(0x0018) NativeAccessSpecifierPublic
 		unsigned char                                              UnknownData_I6NA[0x68];                                  // 0x0168(0x0068) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
 		double                                                     LastReceiveTime;                                         // 0x01D0(0x0008) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic

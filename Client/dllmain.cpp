@@ -240,20 +240,22 @@ void OnGameInit() {
 AOrionPlayerController_Game* pcToOnRep = nullptr;
 
 void PlayerInit() {
-    pcToOnRep->OnRep_Pawn();
-    pcToOnRep->OnRep_PlayerState();
+    GameLogic::SetUIState(EOrionUIState::Match);
 }
 
 
 void MainLoop() {
-    while (!GetAsyncKeyState(VK_F8)) {
+    while (!GetAsyncKeyState(VK_F9)) {
 
     }
 
-    pcToOnRep = Globals::GetLocalPlayerController<AOrionPlayerController_Game>();
-    Hooking::ProcInGameThread(PlayerInit);
+    //Hooking::ProcInGameThread(PlayerInit);
 
-    while (GetAsyncKeyState(VK_F8)) {
+    std::cout << Globals::GetGWorld()->OwningGameInstance->LocalPlayers[0]->PlayerController << std::endl;
+    std::cout << Globals::GetGWorld()->OwningGameInstance->LocalPlayers[0]->PlayerController->NetConnection << std::endl;
+    std::cout << Globals::GetGWorld()->OwningGameInstance->LocalPlayers[0]->PlayerController->Player << std::endl;
+
+    while (GetAsyncKeyState(VK_F9)) {
 
     }
 }
