@@ -238,9 +238,10 @@ namespace GameLogic {
         reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->ServerSetPlayerHeroDataSpec(spec);
 
         controller->HeroData = heroData;
-        controller->HeroName = L"Kwang";
 
         reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->HeroDataSpec = spec;
+
+        reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_HeroDataSpec(FOrionHeroDataSpec());
     }
 
     void SetUIState(EOrionUIState state) {
@@ -249,6 +250,10 @@ namespace GameLogic {
 
     void RestartPlayer(AOrionPlayerController_Game* pc) {
         pc->ServerRestartPlayer();
+    }
+
+    void RestartClient(AOrionPlayerController_Game* pc) {
+        pc->Possess(pc->Pawn);
     }
 
     void HideLoadingScreen() {
@@ -337,6 +342,83 @@ namespace DamageCalculations {
     }
 }
 
+namespace GameplayAbilities {
+    /*
+    void UAbilitySystemComponent::InternalServerTryActiveAbility(FGameplayAbilitySpecHandle Handle, bool InputPressed, const FPredictionKey& PredictionKey, const FGameplayEventData* TriggerEventData)
+{
+#if WITH_SERVER_CODE
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	if (DenyClientActivation > 0)
+	{
+		DenyClientActivation--;
+		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
+		return;
+	}
+#endif
+
+	FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+	if (!Spec)
+	{
+		// Can potentially happen in race conditions where client tries to activate ability that is removed server side before it is received.
+		ABILITY_LOG(Display, TEXT("InternalServerTryActiveAbility. Rejecting ClientActivation of ability with invalid SpecHandle!"));
+		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
+		return;
+	}
+
+	// Consume any pending target info, to clear out cancels from old executions
+	ConsumeAllReplicatedData(Handle, PredictionKey);
+
+	FScopedPredictionWindow ScopedPredictionWindow(this, PredictionKey);
+
+	const UGameplayAbility* AbilityToActivate = Spec->Ability;
+
+	ensure(AbilityToActivate);
+	ensure(AbilityActorInfo.IsValid());
+
+	UGameplayAbility* InstancedAbility = nullptr;
+	Spec->InputPressed = true;
+
+	// Attempt to activate the ability (server side) and tell the client if it succeeded or failed.
+	if (InternalTryActivateAbility(Handle, PredictionKey, &InstancedAbility, nullptr, TriggerEventData))
+	{
+		// TryActivateAbility handles notifying the client of success
+	}
+	else
+	{
+		ABILITY_LOG(Display, TEXT("InternalServerTryActiveAbility. Rejecting ClientActivation of %s. InternalTryActivateAbility failed"), *GetNameSafe(Spec->Ability) );
+		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
+		Spec->InputPressed = false;
+	}
+	MarkAbilitySpecDirty(*Spec);
+#endif
+}*/
+    void InternalServerTryActiveAbility(UAbilitySystemComponent* component, FGameplayAbilitySpecHandle Handle, bool inputPressed, FPredictionKey& PredictionKey, FGameplayEventData* TriggerEventData) {
+        FGameplayAbilitySpec* spec = reinterpret_cast<FGameplayAbilitySpec * (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + 0x2962DD0)(component, Handle);
+
+        if (!spec) {
+            //29572C0 virtual void __cdecl UAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(struct FGameplayAbilitySpecHandle,short) __ptr64
+            reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
+            return;
+        }
+
+        UGameplayAbility* abilityToActivate = spec->Ability;
+
+        UGameplayAbility* InstancedAbility = nullptr;
+        spec->InputPressed = true;
+
+        //296E2B0 BOOL __cdecl UAbilitySystemComponent::InternalTryActivateAbility(struct FGameplayAbilitySpecHandle,struct FPredictionKey,class UGameplayAbility * __ptr64 * __ptr64,class TBaseDelegate<void,class UGameplayAbility * __ptr64> * __ptr64,struct FGameplayEventData const * __ptr64) __ptr64
+
+        if (reinterpret_cast<bool (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, FPredictionKey, UGameplayAbility**, void*, FGameplayEventData*)>(Globals::ModuleBase + 0x296E2B0)(component, Handle, PredictionKey, &InstancedAbility, nullptr, TriggerEventData)) {
+
+        }
+        else {
+            reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
+            spec->InputPressed = false;
+            reinterpret_cast<void(*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + 0x29718E0)(component, Handle);
+        }
+    }
+}
+
 namespace Networking {
     void Listen() {
         EngineLogic::LimitFramerateForServer();
@@ -344,6 +426,9 @@ namespace Networking {
         reinterpret_cast<void(__thiscall*)(UEngine*, UWorld*, FName, FName)>(Globals::ModuleBase + 0x22981c0)(Globals::GetEngine(), Globals::GetGWorld(), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"));
 
         CG::UIpNetDriver* NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
+
+        NetDriver->MaxClientRate = 999999999;
+        NetDriver->MaxInternetClientRate = 999999999;
 
         Globals::GetGWorld()->NetDriver = NetDriver;
 
@@ -353,6 +438,10 @@ namespace Networking {
         url->Valid = 1;
 
         FString* err = (FString*)EngineLogic::Malloc(sizeof(FString), 0);
+
+        for (int i = 0; i < Globals::GetGWorld()->LevelCollections.Count(); i++) {
+            Globals::GetGWorld()->LevelCollections[i].NetDriver = NetDriver;
+        }
 
         reinterpret_cast<void(__thiscall*)(UIpNetDriver*, __int64, FURL*, bool, FString*)>(Globals::ModuleBase + 0x3290920)(NetDriver, reinterpret_cast<__int64>(Globals::GetGWorld()) + 0x28, url, false, err);
 
@@ -371,7 +460,7 @@ namespace Networking {
         std::vector<AActor*> actorsToConsider = std::vector<AActor*>();
 
         for (AActor* actor : allActors) {
-            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos)
+            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos) //
                 continue;
 
             reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver());
@@ -382,11 +471,14 @@ namespace Networking {
         return actorsToConsider;
     }
 
-    static std::vector<UActorChannel*> channels = std::vector<UActorChannel*>();
-
     UActorChannel* GetChannelForConnectionAndActor(UNetConnection* connection, AActor* actor) {
-        for (UActorChannel* channel : channels) {
-            if (channel && channel->Connection == connection && channel->Actor == actor && !channel->closing) {
+        for (int i = 0; i < connection->OpenChannels.Count(); i++) {
+            UActorChannel* channel = reinterpret_cast<UActorChannel*>(connection->OpenChannels[i]);
+
+            if (channel && (!channel->IsA(UActorChannel::StaticClass())))
+                continue;
+
+            if (channel && channel->Connection == connection && channel->Actor == actor) {
                 return channel;
             }
         }
@@ -750,6 +842,8 @@ namespace Networking {
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
 
+            connection->State = USOCK_Open;
+
             if (connection->OwningActor == nullptr)
                 continue;
 
@@ -760,30 +854,28 @@ namespace Networking {
                 if (!actor)
                     continue;
 
+                if (actor->bActorIsBeingDestroyed)
+                    continue;
+
                 if (actor->IsA(APlayerController::StaticClass()) && actor != connection->PlayerController)
                     continue;
 
                 UActorChannel* channel = GetChannelForConnectionAndActor(connection, actor);
 
                 if (!channel) {
-                    std::cout << "Opening channel for: " << actor->GetFullName() << std::endl;
+                    //std::cout << "Opening channel for: " << actor->GetFullName() << std::endl;
                     channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + 0x1FDD9E0)(connection, EChannelType::CHTYPE_Actor, true, -1);
 
                     if (channel) {
                         reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(channel, actor);
 
-                        channels.push_back(channel);
+                        //AddChannel(connection, channel);
                     }
                 }
             }
         }
 
-        for (UActorChannel* channel : channels) {
-            if (channel && channel->Actor && !channel->closing) {
-                reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(channel); //ReplicateActor
-                reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E169F0)(channel); //Tick
-            }
-        }
+
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* connection = GetNetDriver()->ClientConnections[i];
@@ -793,6 +885,8 @@ namespace Networking {
         */
     }
 }
+
+bool breakChannelClose = false;
 
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
@@ -806,6 +900,19 @@ namespace Hooking {
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
+        static UFunction* internalServerTryActiveAbilityFunction = nullptr;
+
+        if (!internalServerTryActiveAbilityFunction)
+            internalServerTryActiveAbilityFunction = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbility");
+
+        if (function == internalServerTryActiveAbilityFunction) {
+            UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(internalServerTryActiveAbilityFunction);
+
+            GameplayAbilities::InternalServerTryActiveAbility(reinterpret_cast<UAbilitySystemComponent*>(object), castParams->AbilityToActivate, castParams->InputPressed, castParams->PredictionKey, nullptr);
+
+            return nullptr;
+        }
+
         if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
             procingCurrentFuncPtrs = true;
 
@@ -838,7 +945,7 @@ namespace Hooking {
     void* uengineGetNetMode = nullptr;
 
     __int64 GetNetModeHook() {
-        return 2;
+        return 1;
     }
 
     void* origStatManagerCrash = nullptr;
@@ -855,14 +962,30 @@ namespace Hooking {
         Networking::ServerReplicateActors();
     }
 
+    void DelayedPCSetup(AOrionPlayerController_Game* pc) {
+        Sleep(25 * 1000);
+
+        std::cout << "Setting up new player..." << std::endl;
+        GameLogic::RestartClient(pc);
+    }
+
     void* origGameModeMOBAPostLogin = nullptr;
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
         if (controller != Globals::GetLocalPlayerController< AOrionPlayerController_Game>()) {
+            controller->ClientHandlePostLogin();
+            controller->ClientHandleMatchIsWaitingToStart();
+
             GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
             GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
             GameLogic::SetupHUDForController(controller);
             GameLogic::StartMatch();
+
+            Globals::GetGameState<AOrionGameState_MOBA>()->OnGameReady();
+
+            //std::thread t(DelayedPCSetup, controller);
+
+            //t.detach();
         }
         else {
             reinterpret_cast<void(*)(AOrionGameMode_MOBA * gamemode, AOrionPlayerController_Game * controller)>(origGameModeMOBAPostLogin)(gamemode, controller);
@@ -915,13 +1038,25 @@ namespace Hooking {
     void* origUNetConnectionClose = nullptr;
 
     void UNetConnectionCloseHook(UNetConnection* connection) {
-        return;
+        if (breakChannelClose) {
+            std::cout << "tried to close channel!" << std::endl;
+            while (true) {
+
+            }
+        }
+        return reinterpret_cast<void(*)(UNetConnection*)>(origUNetConnectionClose)(connection);
     }
 
     void* origCheckAbandonMatchTimer = nullptr;
 
     bool CheckAbandonMatchTimerHook(AOrionGameMode_MOBA* gamemode) {
         return false;
+    }
+
+    void* origHasClientLoadedCurrentWorld = nullptr;
+
+    bool HasClientLoadedCurrentWorldHook(AGameMode* a1, APlayerController* a2) {
+        return !(a2 == Globals::GetLocalPlayerController<APlayerController>());
     }
 
     void* origCanRestartPlayer = nullptr;
@@ -1005,7 +1140,7 @@ namespace Hooking {
 
         MH_EnableHook(notifyControlMessage);
 
-        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1FDD5A0);
+        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1DE6970);
 
         MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(UNetConnectionCloseHook), &origUNetConnectionClose);
 
@@ -1035,6 +1170,8 @@ namespace Hooking {
 
         //
 
+        //
+
         //void* gameModeMOBAPreLoginHook = (void*)(Globals::ModuleBase + 0x4903A0);
 
         //MH_CreateHook(gameModeMOBAPreLoginHook, reinterpret_cast<void*>(GameModeMOBAPreLoginHook), &origGameModeMOBAPreLogin);
@@ -1051,7 +1188,7 @@ void InitConsole() {
 
 void OnMatchInit() {
     std::cout << "Setting UI state..." << std::endl;
-    GameLogic::SetUIState(EOrionUIState::Match);
+    //GameLogic::SetUIState(EOrionUIState::Match);
 
     std::cout << "Setting up teams..." << std::endl;
     GameLogic::SetupTeams();
@@ -1097,6 +1234,21 @@ void MainLoop() {
     }
 
     Hooking::ProcInGameThread(TriggerOnPossessLogic);
+
+    while (GetAsyncKeyState(VK_F7)) {
+
+    }
+}
+
+    //reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->ClientRestart(reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->Pawn);
+    //reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->MyOrionChar = reinterpret_cast<AOrionChar*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController->Pawn);
+    //reinterpret_cast<AOrionPlayerState_Game*>(reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->PlayerState)->CachedPawn = reinterpret_cast<AOrionChar*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController->Pawn);
+
+    //pcToOnRep = reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController);
+
+    breakChannelClose = true;
+
+    //Hooking::ProcInGameThread(PlayerInit);
 
     while (GetAsyncKeyState(VK_F7)) {
 

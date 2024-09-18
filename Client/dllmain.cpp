@@ -190,6 +190,12 @@ namespace Hooking {
     void ReturnToMainMenuHook() {
         return;
     }
+    
+    void* origIsPakAllowed = nullptr;
+
+    bool IsPakAllowedHook() {
+        return true;
+    }
 
     void InitHooking() {
         MH_Initialize();
@@ -212,7 +218,11 @@ namespace Hooking {
 
         MH_EnableHook(returnToMainMenu);
 
-        //
+        void* isPakAllowed = (void*)(Globals::ModuleBase + 0x22B1290);
+
+        MH_CreateHook(isPakAllowed, reinterpret_cast<void*>(IsPakAllowedHook), &origIsPakAllowed);
+
+        MH_EnableHook(isPakAllowed);
     }
 }
 
