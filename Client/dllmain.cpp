@@ -166,6 +166,8 @@ namespace Hooking {
 
                 FuncPtrsToProcInGameThread.pop_back();
             }
+
+            procingCurrentFuncPtrs = false;
         }
 
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
@@ -225,8 +227,20 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 }
 
-void MainLoop() {
+void TriggerOnPossessLogic() {
+    SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->MyOrionChar = (AOrionChar*)SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Pawn;
+}
 
+void MainLoop() {
+    while (!GetAsyncKeyState(VK_F7)) {
+
+    }
+
+    Hooking::ProcInGameThread(TriggerOnPossessLogic);
+
+    while (GetAsyncKeyState(VK_F7)) {
+
+    }
 }
 
 void Main() {

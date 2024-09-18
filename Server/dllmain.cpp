@@ -1,8 +1,10 @@
 #include "SDK.h"
+#include "UnrealContainers.h"
 
 #include <thread>
 #include <iostream>
 #include <format>
+#include <algorithm>
 
 #include "MinHook/include/MinHook.h"
 
@@ -133,6 +135,10 @@ namespace EngineLogic {
         return reinterpret_cast<void* (__thiscall*)(__int64 size, unsigned int alignment)>(Globals::ModuleBase + 0xDFB9F0)(size, alignment);
     }
 
+    __int64 Free(void* ptr) {
+        return reinterpret_cast<__int64 (__thiscall*)(void*)>(Globals::ModuleBase + 0xDEEA90)(ptr);
+    }
+
     void LimitFramerateForServer() {
         ExecuteConsoleCommand(L"t.maxfps 20");
     }
@@ -188,6 +194,10 @@ namespace GameLogic {
         gameState->Teams[3] = teamCreepInfo;
     }
 
+    void SetupHUDForController(AOrionPlayerController_Game* controller) {
+        controller->ClientSetHUD(CG::UObject::FindClass("Class OrionGame.OrionUI_Game"));
+    }
+
     bool AddControllerToTeam(AOrionPlayerController_Game* controller, EOrionTeam team) {
         AOrionGameState_MOBA* gameState = Globals::GetGameState<AOrionGameState_MOBA>();
 
@@ -200,7 +210,13 @@ namespace GameLogic {
                     teamInfo->TeamMembers._count = teamInfo->TeamMembers._count + 1;
                     controller->ServerChangeTeam(team);
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->TeamInfo = teamInfo;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_Team(nullptr);
+
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bReadyToStartMatch = true;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_bReadyToStartMatch();
+
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bIsSpectator = false;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bOnlySpectator = false;
                     return true;
                 }
             }
@@ -209,7 +225,7 @@ namespace GameLogic {
         return false;
     }
 
-    void StartMatch() {
+    void StartMatch() {   
         Globals::GetLocalPlayerController<AOrionPlayerController_Game>()->ServerForceStartGame();
     }
 
@@ -246,7 +262,7 @@ namespace DamageCalculations {
     }
 
     void ApplyDamage(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params, float damage) { //TODO: Deal damage to shield instead of health if shielded
-        params->OutExecutionOutput.OutputModifiers = TArray<FGameplayModifierEvaluatedData>();
+        params->OutExecutionOutput.OutputModifiers = *(reinterpret_cast<TArray<FGameplayModifierEvaluatedData>*>(EngineLogic::Malloc(sizeof(TArray<FGameplayModifierEvaluatedData>), 0)));//TArray<FGameplayModifierEvaluatedData>();
 
         FGameplayModifierEvaluatedData* evaluatedData = reinterpret_cast<FGameplayModifierEvaluatedData*>(EngineLogic::Malloc(sizeof(FGameplayModifierEvaluatedData), 0));
 
@@ -255,7 +271,7 @@ namespace DamageCalculations {
         toCapture = damageObject->RelevantAttributesToCapture[0];
 
         if (toCapture.AttributeToCapture.Attribute && (uintptr_t)toCapture.AttributeToCapture.Attribute != 0xffffffff) {
-            CG::FGameplayAttribute newAttr = CG::FGameplayAttribute();
+            FGameplayAttribute newAttr = *(reinterpret_cast<FGameplayAttribute*>(EngineLogic::Malloc(sizeof(FGameplayAttribute*), 0)));;
 
             newAttr.Attribute = toCapture.AttributeToCapture.Attribute;
             newAttr.AttributeName = FString();
@@ -388,11 +404,347 @@ namespace Networking {
         CHTYPE_MAX = 8,  // Maximum.
     };
 
-    void Replicate() {
+    enum EConnectionState
+    {
+        USOCK_Invalid = 0, // Connection is invalid, possibly uninitialized.
+        USOCK_Closed = 1, // Connection permanently closed.
+        USOCK_Pending = 2, // Connection is awaiting connection.
+        USOCK_Open = 3, // Connection is open.
+    };
+
+    struct FNetworkObjectInfo {
+        AActor* actor;
+        double NextUpdateTime;
+        double LastNetReplicateTime;
+        float OptimalNetUpdateDelta;
+    };
+
+    bool ServerReplicateActors_PrepConnections() {
+        bool bFoundReadyConnection = false;
+
+        for (int32_t ConnIdx = 0; ConnIdx < GetNetDriver()->ClientConnections.Count(); ConnIdx++) {
+            UNetConnection* Connection = GetNetDriver()->ClientConnections[ConnIdx];
+
+            AActor* OwningActor = Connection->OwningActor;
+
+            if (OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f)) {
+                bFoundReadyConnection = true;
+
+                Connection->ViewTarget = Connection->PlayerController ? Connection->PlayerController->GetViewTarget() : OwningActor;
+            }
+            else {
+                Connection->ViewTarget = nullptr;
+            }
+        }
+
+        return bFoundReadyConnection;
+    }
+
+    struct FSharedPtr {
+        FNetworkObjectInfo* ptr;
+        void* pad;
+    };
+
+    struct FNetworkObjectList {
+        UC::TSet<FSharedPtr> FNetworkObjectSet;
+    };
+
+    FNetworkObjectList GetNetworkObjectList(UNetDriver* NetDriver) {
+        return *(FNetworkObjectList*)((__int64)NetDriver + 0x3A0);
+    }
+
+    float GetWorldTimeSeconds(UWorld* world) {
+        return *(float*)((__int64)world + 0x8E0);
+    }
+
+    void ServerReplicateActors_BuildConsiderList(std::vector<FNetworkObjectInfo*>& ConsiderList, float ServerTickTime) {
+        int32_t NumInitiallyDormant = 0;
+
+        std::cout << GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.Num() << std::endl;
+
+        for (int i = 0; i < GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.Num(); i++) {
+            if (!GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.IsValidIndex(i))
+                continue;
+
+            FNetworkObjectInfo* ActorInfo = (FNetworkObjectInfo*)EngineLogic::Malloc(sizeof(FNetworkObjectInfo), 0);
+
+            ActorInfo = GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet[i].ptr;
+
+            if (ActorInfo) {
+                std::cout << "Valid ActorInfo!" << std::endl;
+                AActor* actor = ActorInfo->actor;
+
+                if (actor->GetRemoteRole() == ENetRole::ROLE_None) {
+                    continue;
+                }
+
+                if ((actor->bPendingNetUpdate || GetWorldTimeSeconds(Globals::GetGWorld()) > actor->NetUpdateTime)) {
+                    if (ActorInfo->LastNetReplicateTime == 0) {
+                        ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
+                        ActorInfo->OptimalNetUpdateDelta = 1.0f / actor->NetUpdateFrequency;
+                    }
+
+                    const float ScaleDownStartTime = 2.0f;
+                    const float ScaleDownTimeRange = 5.0f;
+
+                    const float LastReplicateDelta = GetWorldTimeSeconds(Globals::GetGWorld()) - ActorInfo->LastNetReplicateTime;
+
+                    if (LastReplicateDelta > ScaleDownStartTime) {
+                        if (actor->MinNetUpdateFrequency == 0.0f) {
+                            actor->MinNetUpdateFrequency = 2.0f;
+                        }
+
+                        const float MinOptimalDelta = 1.0f / actor->NetUpdateFrequency;
+                        const float MaxOptimalDelta = fmaxf(1.0f / actor->MinNetUpdateFrequency, MinOptimalDelta);
+
+                        const float Alpha = std::clamp((LastReplicateDelta - ScaleDownStartTime) / ScaleDownTimeRange, 0.0f, 1.0f);
+                        ActorInfo->OptimalNetUpdateDelta = std::lerp(MinOptimalDelta, MaxOptimalDelta, Alpha);
+                    }
+
+                    if (!actor->bPendingNetUpdate) {
+                        const float NextUpdateDelta = ActorInfo->OptimalNetUpdateDelta;
+
+                        actor->NetUpdateTime = GetWorldTimeSeconds(Globals::GetGWorld()) + std::rand() * ServerTickTime + NextUpdateDelta;
+
+                        actor->LastNetUpdateTime = GetNetDriver()->Time;
+                    }
+
+                    actor->bPendingNetUpdate = false;
+
+                    ConsiderList.push_back(ActorInfo);
+
+                    reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver()); //CallPreReplication
+                }
+            }
+            else {
+                std::cout << "Invalid ActorInfo!" << std::endl;
+            }
+        }
+    }
+
+    struct FActorPriority {
+        int Priority;
+
+        FNetworkObjectInfo* ActorInfo;
+        UActorChannel* Channel;
+    };
+
+    int* GetTickCountPtr(UNetConnection* connection) {
+        return (int*)((__int64)connection + 0x7F);
+    }
+
+    void ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList, std::vector<FActorPriority>& OutPriorityList, std::vector<FActorPriority>& OutPriorityActors) {
+        static int NetTag = 0;
+
+        NetTag++;
+        (*GetTickCountPtr(connection))++;
+
+        /*
+        for (int j = 0; j < connection->SentTemporaries.Count(); j++) {
+            if(connection->SentTemporaries[j])
+                connection->SentTemporaries[j]->NetTag = NetTag;
+        }
+        */
+
+        int FinalSortedCount = 0;
+        int DeletedCount = 0;
+
+        const int MaxSortedActors = ConsiderList.size();
+
+        if (MaxSortedActors > 0) {
+            OutPriorityList = std::vector<FActorPriority>();
+            OutPriorityActors = std::vector<FActorPriority>();
+
+            for (FNetworkObjectInfo* ActorInfo : ConsiderList) {
+                AActor* Actor = ActorInfo->actor;
+
+                UActorChannel* Channel = nullptr;
+
+                for (int i = 0; i < connection->OpenChannels.Count(); i++) {
+                    if (connection->OpenChannels[i]->IsA(UActorChannel::StaticClass()) && ((UActorChannel*)(connection->OpenChannels[i]))->Actor == Actor) {
+                        Channel = (UActorChannel*)(connection->OpenChannels[i]);
+                    }
+                }
+
+                if (Actor->NetTag != NetTag) {
+                    Actor->NetTag = NetTag;
+
+                    FActorPriority actorPrio = FActorPriority();
+
+                    actorPrio.ActorInfo = ActorInfo;
+                    actorPrio.Channel = Channel;
+                    actorPrio.Priority = 100;
+
+                    OutPriorityList.push_back(actorPrio);
+                    OutPriorityActors.push_back(actorPrio);
+                }
+            }
+        }
+    }
+
+    int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<FActorPriority> PriorityActors, int& OutUpdated) {
+        if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //IsNetReady;
+            return 0;
+        }
+
+        int ActorUpdatesThisConnection = 0;
+        int ActorUpdatesThisConnectionSent = 0;
+        int FinalRelevantCount = 0;
+
+        for (int j = 0; j < PriorityActors.size(); j++) {
+            UActorChannel* Channel = PriorityActors[j].Channel;
+
+            if (!Channel || Channel->Actor) {
+                AActor* Actor = PriorityActors[j].ActorInfo->actor;
+
+                if (Actor->IsA(APlayerController::StaticClass()) && Actor != Connection->PlayerController) {
+                    continue;
+                }
+
+                if (Actor->GetFullName().find("Default") != std::string::npos) {
+                    continue;
+                }
+
+                if (Actor->RemoteRole == ENetRole::ROLE_None) {
+                    continue;
+                }
+                
+                FinalRelevantCount++;
+
+                if (Channel == nullptr && Actor) {
+                    Channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + 0x1FDD9E0)(Connection, EChannelType::CHTYPE_Actor, true, -1); //CreateChannel
+
+                    if (Channel) {
+                        reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(Channel, Actor); //SetChannelActor
+                    }
+                }
+
+                if (Channel && Channel->Actor) {
+                    if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //IsNetReady
+                        if (reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(Channel)) { //ReplicateActor
+                           // std::cout << "Replicated Actor!" << std::endl;
+                            
+                            ActorUpdatesThisConnectionSent++;
+
+                            const float MinOptimalDelta = 1.0f / Actor->NetUpdateFrequency;
+                            const float MaxOptimalDelta = std::fmaxf(1.0f / Actor->MinNetUpdateFrequency, MinOptimalDelta);
+                            const float DeltaBetweenReplications = (GetWorldTimeSeconds(Globals::GetGWorld()) - PriorityActors[j].ActorInfo->LastNetReplicateTime);
+
+                            PriorityActors[j].ActorInfo->OptimalNetUpdateDelta = std::clamp(DeltaBetweenReplications * 0.7f, MinOptimalDelta, MaxOptimalDelta);
+                            PriorityActors[j].ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
+                        }
+
+                        ActorUpdatesThisConnection++;
+                        OutUpdated++;
+                    }
+                    else {
+                       // std::cout << "Replication Failed, Forcing Net Update!" << std::endl;
+                        reinterpret_cast<void(*)(AActor*)>(Globals::ModuleBase + 0x1B7E250)(Actor); //AActor::ForceNetUpdate
+                    }
+
+                    if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) {
+                        //std::cout << "Bailing on processing actors..." << std::endl;
+                        return j;
+                    }
+                }
+            }
+        }
+    }
+
+    void ServerReplicateActors() {
         if (!GetNetDriver()) {
             Globals::GetGWorld()->NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
         }
 
+        if (GetNetDriver()->ClientConnections.Count() == 0) {
+            return;
+        }
+
+        (*(__int64*)((__int64)GetNetDriver() + 0x280))++; //Bump ReplicationFrame
+
+        //0x280 or 0x3b8
+
+        bool shouldTick = ServerReplicateActors_PrepConnections();
+
+        if (!shouldTick) {
+            return;
+        }
+
+        float ServerTickTime = 20.0f; //Hardcoded 20 tickrate, changeme if want higher tickrate
+
+        ServerTickTime = 1.0f / ServerTickTime;
+
+        std::vector<FNetworkObjectInfo*> ConsiderList = std::vector<FNetworkObjectInfo*>();
+
+        //for (AActor* actor : UObject::FindObjects<AActor>()) {
+        //TArray<AActor*>* considerActors = reinterpret_cast<TArray<AActor*>*>(EngineLogic::Malloc(sizeof(TArray<AActor*>), 0));
+        //SDKUtils::GetLastOfType<UGameplayStatics>()->STATIC_GetAllActorsOfClass(Globals::GetGWorld(), AActor::StaticClass(), considerActors);
+
+        for (int i = 0; i < UObject::GObjects->Count(); i++) {
+            UObject* obj = UObject::GObjects->GetByIndex(i);
+
+            if (!obj)
+                continue;
+            /*
+              bool IsFlagSet(Flags flag) const {return 0 != (theFlags & flag);}
+  void SetFlag(Flags flag)         {theFlags |= flag;}
+  void UnsetFlag(Flags flag)       {theFlags &= ~flag;}
+            */
+
+            if (!obj->IsA(AActor::StaticClass()))
+                continue;
+
+            AActor* actor = (AActor*)obj;
+
+            if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + 0x2AFBB0)(actor))
+                continue;
+
+            FNetworkObjectInfo* newConsider = (FNetworkObjectInfo*)EngineLogic::Malloc(sizeof(FNetworkObjectInfo), 0);
+            newConsider->actor = actor;
+            newConsider->LastNetReplicateTime = 0;
+            newConsider->NextUpdateTime = 0;
+            newConsider->OptimalNetUpdateDelta = 1.0f;
+
+            reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver());
+
+            ConsiderList.push_back(newConsider);
+        }
+        //}
+
+        //ServerReplicateActors_BuildConsiderList(ConsiderList, ServerTickTime);
+
+        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
+            UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
+
+            if (Connection->PlayerController) {
+                reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(Connection->PlayerController);
+            }
+
+            std::vector<FActorPriority> PriorityList = std::vector<FActorPriority>();
+            std::vector<FActorPriority> PriorityActors = std::vector<FActorPriority>();
+
+            ServerReplicateActors_PrioritizeActors(Connection, ConsiderList, PriorityList, PriorityActors);
+
+            int Updated = 0;
+
+            int LastProcessedActor = ServerReplicateActors_ProcessPrioritizedActors(Connection, PriorityActors, Updated);
+
+            for (int k = LastProcessedActor; k < PriorityActors.size(); k++) {
+                if (!PriorityActors[k].ActorInfo) {
+                    continue;
+                }
+
+                AActor* Actor = PriorityActors[k].ActorInfo->actor;
+
+                UActorChannel* Channel = PriorityActors[k].Channel;
+
+                Actor->bPendingNetUpdate = true;
+            }
+        }
+
+        //EngineLogic::Free(considerActors);
+
+        /*
         std::vector<AActor*> considerList = GetActorConsiderList();
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
@@ -438,6 +790,7 @@ namespace Networking {
 
             reinterpret_cast<void(*)(UNetConnection*)>(Globals::ModuleBase + 0x1FFB5A0)(connection);
         }
+        */
     }
 }
 
@@ -463,6 +816,8 @@ namespace Hooking {
 
                 FuncPtrsToProcInGameThread.pop_back();
             }
+
+            procingCurrentFuncPtrs = false;
         }
 
         if (object->IsA(UOrionDamage::StaticClass())) {
@@ -497,7 +852,7 @@ namespace Hooking {
     void NetDriverTickFlushHook(float DeltaTime) {
         reinterpret_cast<void(*)(float)>(origNetDriverTickFlush)(DeltaTime);
 
-        Networking::Replicate();
+        Networking::ServerReplicateActors();
     }
 
     void* origGameModeMOBAPostLogin = nullptr;
@@ -506,6 +861,7 @@ namespace Hooking {
         if (controller != Globals::GetLocalPlayerController< AOrionPlayerController_Game>()) {
             GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
             GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
+            GameLogic::SetupHUDForController(controller);
             GameLogic::StartMatch();
         }
         else {
@@ -566,6 +922,18 @@ namespace Hooking {
 
     bool CheckAbandonMatchTimerHook(AOrionGameMode_MOBA* gamemode) {
         return false;
+    }
+
+    void* origCanRestartPlayer = nullptr;
+
+    bool CanRestartPlayerHook(AOrionPlayerController_Game* a1) {
+        return a1 != Globals::GetLocalPlayerController<AOrionPlayerController_Base>();
+    }
+
+    void* origCollectGarbage = nullptr;
+
+    void CollectGarbageHook() {
+
     }
 
     void InitHooking() {
@@ -641,13 +1009,29 @@ namespace Hooking {
 
         MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(UNetConnectionCloseHook), &origUNetConnectionClose);
 
-        MH_EnableHook(unetConnectionClose);
+        //MH_EnableHook(unetConnectionClose);
 
         void* checkAbandonMatchTimer = (void*)(Globals::ModuleBase + 0x471800);
 
         MH_CreateHook(checkAbandonMatchTimer, reinterpret_cast<void*>(CheckAbandonMatchTimerHook), &origCheckAbandonMatchTimer);
 
         MH_EnableHook(checkAbandonMatchTimer);
+
+        void* canRestartPlayer = (void*)(Globals::ModuleBase + 0x62F310);
+
+        MH_CreateHook(canRestartPlayer, reinterpret_cast<void*>(CanRestartPlayerHook), &origCanRestartPlayer);
+
+        MH_EnableHook(canRestartPlayer);
+
+        void* collectGarbage = (void*)(Globals::ModuleBase + 0xF39050);
+
+        MH_CreateHook(collectGarbage, reinterpret_cast<void*>(CollectGarbageHook), &origCollectGarbage);
+
+        MH_EnableHook(collectGarbage);
+
+        //F39050
+
+        //62F310
 
         //
 
@@ -695,15 +1079,28 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C");
+    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
     Sleep(20 * 1000);
 
     Hooking::ProcInGameThread(OnMatchInit);
 }
 
-void MainLoop() {
+void TriggerOnPossessLogic() {
+    //SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Possess(SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Pawn);
+    GameLogic::StartMatch();
+}
 
+void MainLoop() {
+    while (!GetAsyncKeyState(VK_F7)) {
+
+    }
+
+    Hooking::ProcInGameThread(TriggerOnPossessLogic);
+
+    while (GetAsyncKeyState(VK_F7)) {
+
+    }
 }
 
 void Main() {
