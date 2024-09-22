@@ -170,6 +170,35 @@ namespace Hooking {
             procingCurrentFuncPtrs = false;
         }
 
+        //if (object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) {
+            //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
+        //}
+
+        if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) {
+            if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->IsA(AOrionPlayerState_Game::StaticClass())) {
+                if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent) {
+                    AOrionTargetingMode* castObj = (AOrionTargetingMode*)object;
+
+                    //void* ret = reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
+
+                    //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(SDKUtils::GetLastOfType< UOrionAbilityTask_StartTargeting>());
+
+                    /*
+                    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects< UOrionAbilityTask_StartTargeting>()) {
+                        if(target->GetFullName().find("Default") == std::string::npos)
+                            reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(target);
+                    }
+                    */
+
+                    castObj->OnTargetingModeActivate();
+
+                    Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent->ServerTryActivateAbilityWithEventData(FGameplayAbilitySpecHandle(), false, FPredictionKey(), FGameplayEventData());
+
+                    //return ret;
+                }
+            }
+        }
+
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
     }
 
@@ -194,6 +223,12 @@ namespace Hooking {
     void* origIsPakAllowed = nullptr;
 
     bool IsPakAllowedHook() {
+        return true;
+    }
+
+    void* origIsTargetingValid = nullptr;
+
+    bool TargetingValidHook(void* a1) {
         return true;
     }
 
@@ -222,7 +257,15 @@ namespace Hooking {
 
         MH_CreateHook(isPakAllowed, reinterpret_cast<void*>(IsPakAllowedHook), &origIsPakAllowed);
 
-        MH_EnableHook(isPakAllowed);
+        //MH_EnableHook(isPakAllowed);
+
+        void* targetingValid = (void*)(Globals::ModuleBase + 0x26DE70);
+
+        MH_CreateHook(targetingValid, reinterpret_cast<void*>(TargetingValidHook), &origIsTargetingValid);
+
+        //MH_EnableHook(targetingValid);
+
+        //0x26DE70
     }
 }
 
@@ -237,8 +280,23 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 }
 
-void TriggerOnPossessLogic() {
-    SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->MyOrionChar = (AOrionChar*)SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Pawn;
+void FixAbilities() {
+    //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
+
+    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
+        if (target->GetFullName().find("Default") == std::string::npos) {
+            std::cout << target->GetFullName() << std::endl;
+
+            target->ConfirmOrCancel();
+
+
+
+            //target->ServerForceClientTargetData();
+            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2B8850)(target);
+            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2A1E90)(target);
+            //2A1CE0
+        }
+    }
 }
 
 void MainLoop() {
@@ -246,7 +304,7 @@ void MainLoop() {
 
     }
 
-    Hooking::ProcInGameThread(TriggerOnPossessLogic);
+    Hooking::ProcInGameThread(FixAbilities);
 
     while (GetAsyncKeyState(VK_F7)) {
 

@@ -56,5 +56,8 @@
     <ClCompile Include="SDK\OnlineSubsystem_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="SDK\GameplayAbilities_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -12,6 +12,28 @@
 
 using namespace CG;
 
+namespace Settings {
+    struct Player {
+        std::string key;
+        std::string name;
+        std::string heroDataName;
+        std::string skinName;
+        EOrionTeam team;
+
+        Player(std::string key, std::string name, std::string heroDataName, std::string skinName, EOrionTeam team) {
+            this->key = key;
+            this->name = name;
+            this->heroDataName = heroDataName;
+            this->skinName = skinName;
+            this->team = team;
+        }
+    };
+
+    const int NUM_PLAYERS_TO_START = 2;
+    const std::string SERVER_KEY = "pg";
+    const Player PLAYER_ARRAY[] = {Player("gwog", "gwog :3", "OrionHeroData HeroData_Vamp.HeroData_Vamp", "OrionSkinItemDefinition MasterSkin_Vamp.MasterSkin_Vamp", EOrionTeam::TeamBlue), Player("notgwog", "not gwog :/", "OrionHeroData HeroData_Kurohane.HeroData_Kurohane", "OrionSkinItemDefinition MasterSkin_Kurohane.MasterSkin_Kurohane", EOrionTeam::TeamRed)};
+}
+
 namespace SDKUtils {
     template <typename T>
     std::vector<T*> GetAllObjectsOfType() {
@@ -34,6 +56,8 @@ namespace SDKUtils {
 }
 
 namespace Globals {
+    static bool shouldStartMatch = false;
+
     uintptr_t ModuleBase = 0;
 
     UWorld* GetGWorld() {
@@ -393,13 +417,27 @@ namespace GameplayAbilities {
 #endif
 }*/
     void InternalServerTryActiveAbility(UAbilitySystemComponent* component, FGameplayAbilitySpecHandle Handle, bool inputPressed, FPredictionKey& PredictionKey, FGameplayEventData* TriggerEventData) {
+        std::cout << Handle.Handle << std::endl;
+
         FGameplayAbilitySpec* spec = reinterpret_cast<FGameplayAbilitySpec * (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + 0x2962DD0)(component, Handle);
 
         if (!spec) {
+            std::cout << "Bailed, no ability!" << std::endl;
             //29572C0 virtual void __cdecl UAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(struct FGameplayAbilitySpecHandle,short) __ptr64
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
             return;
         }
+
+        reinterpret_cast<void(*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, FPredictionKey*)>(Globals::ModuleBase + 0x2958F90)(component, Handle, &PredictionKey);
+        
+        
+        //0x297CF40 - Reset
+
+
+
+        void* ScopedPredictionWindow = EngineLogic::Malloc(0x100, 0);
+
+        ScopedPredictionWindow = reinterpret_cast<void* (*)(void*, UAbilitySystemComponent*, FPredictionKey*, bool)>(Globals::ModuleBase + 0x29C7A40)(ScopedPredictionWindow, component, &PredictionKey, true);
 
         UGameplayAbility* abilityToActivate = spec->Ability;
 
@@ -408,14 +446,17 @@ namespace GameplayAbilities {
 
         //296E2B0 BOOL __cdecl UAbilitySystemComponent::InternalTryActivateAbility(struct FGameplayAbilitySpecHandle,struct FPredictionKey,class UGameplayAbility * __ptr64 * __ptr64,class TBaseDelegate<void,class UGameplayAbility * __ptr64> * __ptr64,struct FGameplayEventData const * __ptr64) __ptr64
 
-        if (reinterpret_cast<bool (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, FPredictionKey, UGameplayAbility**, void*, FGameplayEventData*)>(Globals::ModuleBase + 0x296E2B0)(component, Handle, PredictionKey, &InstancedAbility, nullptr, TriggerEventData)) {
-
+        if (reinterpret_cast<bool (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, FPredictionKey*, UGameplayAbility**, void*, FGameplayEventData*)>(Globals::ModuleBase + 0x296E2B0)(component, Handle, &PredictionKey, &InstancedAbility, nullptr, TriggerEventData)) {
+            std::cout << "Cast succeeded!" << std::endl;
         }
         else {
+            std::cout << "Bailed, cast failed!" << std::endl;
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
             spec->InputPressed = false;
-            reinterpret_cast<void(*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + 0x29718E0)(component, Handle);
+            
         }
+
+        reinterpret_cast<void(*)(UAbilitySystemComponent*, FGameplayAbilitySpec*)>(Globals::ModuleBase + 0x29718E0)(component, spec);
     }
 }
 
@@ -631,13 +672,6 @@ namespace Networking {
         NetTag++;
         (*GetTickCountPtr(connection))++;
 
-        /*
-        for (int j = 0; j < connection->SentTemporaries.Count(); j++) {
-            if(connection->SentTemporaries[j])
-                connection->SentTemporaries[j]->NetTag = NetTag;
-        }
-        */
-
         int FinalSortedCount = 0;
         int DeletedCount = 0;
 
@@ -754,8 +788,6 @@ namespace Networking {
 
         (*(__int64*)((__int64)GetNetDriver() + 0x280))++; //Bump ReplicationFrame
 
-        //0x280 or 0x3b8
-
         bool shouldTick = ServerReplicateActors_PrepConnections();
 
         if (!shouldTick) {
@@ -768,20 +800,11 @@ namespace Networking {
 
         std::vector<FNetworkObjectInfo*> ConsiderList = std::vector<FNetworkObjectInfo*>();
 
-        //for (AActor* actor : UObject::FindObjects<AActor>()) {
-        //TArray<AActor*>* considerActors = reinterpret_cast<TArray<AActor*>*>(EngineLogic::Malloc(sizeof(TArray<AActor*>), 0));
-        //SDKUtils::GetLastOfType<UGameplayStatics>()->STATIC_GetAllActorsOfClass(Globals::GetGWorld(), AActor::StaticClass(), considerActors);
-
         for (int i = 0; i < UObject::GObjects->Count(); i++) {
             UObject* obj = UObject::GObjects->GetByIndex(i);
 
             if (!obj)
                 continue;
-            /*
-              bool IsFlagSet(Flags flag) const {return 0 != (theFlags & flag);}
-  void SetFlag(Flags flag)         {theFlags |= flag;}
-  void UnsetFlag(Flags flag)       {theFlags &= ~flag;}
-            */
 
             if (!obj->IsA(AActor::StaticClass()))
                 continue;
@@ -801,9 +824,6 @@ namespace Networking {
 
             ConsiderList.push_back(newConsider);
         }
-        //}
-
-        //ServerReplicateActors_BuildConsiderList(ConsiderList, ServerTickTime);
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
@@ -833,60 +853,8 @@ namespace Networking {
                 Actor->bPendingNetUpdate = true;
             }
         }
-
-        //EngineLogic::Free(considerActors);
-
-        /*
-        std::vector<AActor*> considerList = GetActorConsiderList();
-
-        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
-            UNetConnection* connection = GetNetDriver()->ClientConnections[i];
-
-            connection->State = USOCK_Open;
-
-            if (connection->OwningActor == nullptr)
-                continue;
-
-            if (connection->PlayerController)
-                reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(connection->PlayerController);
-
-            for (AActor* actor : considerList) {
-                if (!actor)
-                    continue;
-
-                if (actor->bActorIsBeingDestroyed)
-                    continue;
-
-                if (actor->IsA(APlayerController::StaticClass()) && actor != connection->PlayerController)
-                    continue;
-
-                UActorChannel* channel = GetChannelForConnectionAndActor(connection, actor);
-
-                if (!channel) {
-                    //std::cout << "Opening channel for: " << actor->GetFullName() << std::endl;
-                    channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + 0x1FDD9E0)(connection, EChannelType::CHTYPE_Actor, true, -1);
-
-                    if (channel) {
-                        reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(channel, actor);
-
-                        //AddChannel(connection, channel);
-                    }
-                }
-            }
-        }
-
-
-
-        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
-            UNetConnection* connection = GetNetDriver()->ClientConnections[i];
-
-            reinterpret_cast<void(*)(UNetConnection*)>(Globals::ModuleBase + 0x1FFB5A0)(connection);
-        }
-        */
     }
 }
-
-bool breakChannelClose = false;
 
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
@@ -897,21 +865,96 @@ namespace Hooking {
         FuncPtrsToProcInGameThread.push_back(ptr);
     }
 
+    static bool triggerAbilityFailed = false;
+
+    void TriggerAbilities() {
+        bool procdAnAbility = false;
+
+        for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
+            static std::vector< UOrionAbilityTask_StartTargeting*> alreadyProcdTasks = std::vector<UOrionAbilityTask_StartTargeting*>();
+
+            if (target->GetFullName().find("Default") == std::string::npos) {
+                bool alreadyProcd = false;
+
+                for (UOrionAbilityTask_StartTargeting* cmp : alreadyProcdTasks) {
+                    if (cmp == target) {
+                        alreadyProcd = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyProcd) {
+                    alreadyProcdTasks.push_back(target);
+                    procdAnAbility = true;
+                    std::cout << target->GetFullName() << std::endl;
+                    //target->ServerForceClientTargetData();
+                    //UOrionAbilityTask_StartTargeting* newTarget = target->STATIC_StartTargeting(target->Ability, FName(), EGameplayTargetingConfirmation::UserConfirmed, 0);
+                    //target->CancelImpl();
+                    target->ConfirmOrCancel();
+                }
+            }
+        }
+
+        if (!procdAnAbility) {
+            triggerAbilityFailed = true;
+        }
+    }
+
+    //void ProcTriggerAbilityInDelay() {
+        //Sleep(10);
+        //ProcInGameThread(TriggerAbilities);
+    //}
+
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
         static UFunction* internalServerTryActiveAbilityFunction = nullptr;
 
+        static UFunction* internalServerTryActiveAbilityFunctionWithEventData = nullptr;
+
+        static UFunction* waitNotifyNameFunction = nullptr;
+
         if (!internalServerTryActiveAbilityFunction)
             internalServerTryActiveAbilityFunction = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbility");
 
+        if (!internalServerTryActiveAbilityFunctionWithEventData)
+            internalServerTryActiveAbilityFunctionWithEventData = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbilityWithEventData");
+
         if (function == internalServerTryActiveAbilityFunction) {
-            UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(internalServerTryActiveAbilityFunction);
+            UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(params);
 
             GameplayAbilities::InternalServerTryActiveAbility(reinterpret_cast<UAbilitySystemComponent*>(object), castParams->AbilityToActivate, castParams->InputPressed, castParams->PredictionKey, nullptr);
 
-            return nullptr;
+            return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
         }
+
+        if (function == internalServerTryActiveAbilityFunctionWithEventData) {
+            triggerAbilityFailed = false;
+            std::cout << "DUMMY FUNCTION CALLED" << std::endl;
+
+            TriggerAbilities();
+            
+            /*
+            for (int i = 0; i < castObj->AllReplicatedInstancedAbilities.Count(); i++) {
+                UGameplayAbility* ability = castObj->AllReplicatedInstancedAbilities[i];
+
+                for (int j = 0; j < ability->ActiveTasks.Count(); j++) {
+                    UGameplayTask* task = ability->ActiveTasks[j];
+
+                    if (task->IsA(UOrionAbilityTask_StartTargeting::StaticClass())) {
+                        UOrionAbilityTask_StartTargeting* castTask = (UOrionAbilityTask_StartTargeting*)task;
+
+                        castTask->ServerForceClientTargetData();
+                        castTask->ConfirmOrCancel();
+                    }
+                }
+            }
+            */
+        }
+
+        //if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos)) {
+            //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
+        //}
 
         if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
             procingCurrentFuncPtrs = true;
@@ -969,6 +1012,8 @@ namespace Hooking {
         GameLogic::RestartClient(pc);
     }
 
+    static bool teamFlip = false;
+
     void* origGameModeMOBAPostLogin = nullptr;
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
@@ -976,16 +1021,19 @@ namespace Hooking {
             controller->ClientHandlePostLogin();
             controller->ClientHandleMatchIsWaitingToStart();
 
-            GameLogic::AddControllerToTeam(controller, EOrionTeam::TeamBlue);
-            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
+            GameLogic::AddControllerToTeam(controller, teamFlip ? EOrionTeam::TeamRed : EOrionTeam::TeamBlue);
+
+            teamFlip = !teamFlip;
+
+            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Vamp.HeroData_Vamp"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Vamp.MasterSkin_Vamp"));
             GameLogic::SetupHUDForController(controller);
-            GameLogic::StartMatch();
+            
+            static int numPlayers = 0;
 
-            Globals::GetGameState<AOrionGameState_MOBA>()->OnGameReady();
+            numPlayers++;
 
-            //std::thread t(DelayedPCSetup, controller);
-
-            //t.detach();
+            if (numPlayers >= Settings::NUM_PLAYERS_TO_START)
+                Globals::shouldStartMatch = true;
         }
         else {
             reinterpret_cast<void(*)(AOrionGameMode_MOBA * gamemode, AOrionPlayerController_Game * controller)>(origGameModeMOBAPostLogin)(gamemode, controller);
@@ -1031,20 +1079,8 @@ namespace Hooking {
 
     void* origGameModeMOBAPreLogin = nullptr;
 
-    void GameModeMOBAPreLoginHook() {
+    void GameModeMOBAPreLoginHook(AOrionGameMode_MOBA* moba, FString* Options, FString* Address, FUniqueNetIdRepl* UniqueId, FString* ErrorMessage) {
         return;
-    }
-
-    void* origUNetConnectionClose = nullptr;
-
-    void UNetConnectionCloseHook(UNetConnection* connection) {
-        if (breakChannelClose) {
-            std::cout << "tried to close channel!" << std::endl;
-            while (true) {
-
-            }
-        }
-        return reinterpret_cast<void(*)(UNetConnection*)>(origUNetConnectionClose)(connection);
     }
 
     void* origCheckAbandonMatchTimer = nullptr;
@@ -1069,6 +1105,60 @@ namespace Hooking {
 
     void CollectGarbageHook() {
 
+    }
+
+    void* origConsumeClientTargetData = nullptr;
+
+    void ConsumeClientTargetDataHook() {
+
+    }
+
+    void* origCloseConnection = nullptr;
+
+    void CloseConnection() {
+
+    }
+
+    void* origTargetDataReplicated = nullptr;
+
+    void TargetDataReplicatedHook(UAbilityTask_WaitTargetData* targetData, void* a2) {
+        std::cout << "GWA" << std::endl;
+        return reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*, void* a2)>(origTargetDataReplicated)(targetData, a2);
+    }
+
+    void* origGameEngineTick = nullptr;
+
+    static int numTicksAbilitiesTriggered = 0;
+
+    const int maxNumTicksAbilitiesTriggered = 10;
+
+    static int numTicksWaitedToStartMatch = 0;
+
+    const int maxNumTicksWaitedToStartMatch = 5000;
+
+    int GameEngineTickHook(UGameEngine* gameengine, float deltatime, char a3) {
+        if (triggerAbilityFailed) {
+            numTicksAbilitiesTriggered++;
+            TriggerAbilities();
+
+            if (numTicksAbilitiesTriggered > maxNumTicksAbilitiesTriggered) {
+                triggerAbilityFailed = false;
+            }
+        }
+        else {
+            numTicksAbilitiesTriggered = 0;
+        }
+
+        if (Globals::shouldStartMatch) {
+            numTicksWaitedToStartMatch++;
+
+            if (numTicksWaitedToStartMatch >= maxNumTicksWaitedToStartMatch) {
+                Globals::shouldStartMatch = false;
+                GameLogic::StartMatch();
+            }
+        }
+
+        return reinterpret_cast<int(*)(UGameEngine * gameengine, float deltatime, char a3)>(origGameEngineTick)(gameengine, deltatime, a3);
     }
 
     void InitHooking() {
@@ -1142,9 +1232,9 @@ namespace Hooking {
 
         void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1DE6970);
 
-        MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(UNetConnectionCloseHook), &origUNetConnectionClose);
+        MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(CloseConnection), &origCloseConnection);
 
-        //MH_EnableHook(unetConnectionClose);
+        MH_EnableHook(unetConnectionClose);
 
         void* checkAbandonMatchTimer = (void*)(Globals::ModuleBase + 0x471800);
 
@@ -1164,19 +1254,21 @@ namespace Hooking {
 
         MH_EnableHook(collectGarbage);
 
-        //F39050
+        void* consumeClientTargetData = (void*)(Globals::ModuleBase + 0x2958F90);
 
-        //62F310
+        MH_CreateHook(consumeClientTargetData, reinterpret_cast<void*>(ConsumeClientTargetDataHook), &origConsumeClientTargetData);
 
-        //
+        void* targetDataReplicated = (void*)(Globals::ModuleBase + 0x296EA0);
 
-        //
+        MH_CreateHook(targetDataReplicated, reinterpret_cast<void*>(TargetDataReplicatedHook), &origTargetDataReplicated);
+         
+        MH_EnableHook(targetDataReplicated);
 
-        //void* gameModeMOBAPreLoginHook = (void*)(Globals::ModuleBase + 0x4903A0);
+        void* gameEngineTick = (void*)(Globals::ModuleBase + 0x1E775B0);
 
-        //MH_CreateHook(gameModeMOBAPreLoginHook, reinterpret_cast<void*>(GameModeMOBAPreLoginHook), &origGameModeMOBAPreLogin);
+        MH_CreateHook(gameEngineTick, reinterpret_cast<void*>(GameEngineTickHook), &origGameEngineTick);
 
-        //MH_EnableHook(gameModeMOBAPreLoginHook);
+        MH_EnableHook(gameEngineTick);
     }
 }
 
@@ -1187,22 +1279,8 @@ void InitConsole() {
 }
 
 void OnMatchInit() {
-    std::cout << "Setting UI state..." << std::endl;
-    //GameLogic::SetUIState(EOrionUIState::Match);
-
     std::cout << "Setting up teams..." << std::endl;
     GameLogic::SetupTeams();
-
-    /*
-    std::cout << "Adding local player to team blue..." << std::endl;
-    GameLogic::AddControllerToTeam(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), EOrionTeam::TeamBlue);
-
-    std::cout << "Setting local player hero data..." << std::endl;
-    GameLogic::SetControllerHeroData(Globals::GetLocalPlayerController<AOrionPlayerController_Game>(), UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Kwang.HeroData_Kwang"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Kwang.MasterSkin_Kwang"));
-
-    std::cout << "Starting the match..." << std::endl;
-    GameLogic::StartMatch();
-    */
 
     std::cout << "Hiding loading screen..." << std::endl;
     GameLogic::HideLoadingScreen();
@@ -1223,9 +1301,72 @@ void OnGameInit() {
     Hooking::ProcInGameThread(OnMatchInit);
 }
 
-void TriggerOnPossessLogic() {
-    //SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Possess(SDKUtils::GetLastOfType<AOrionPlayerController_Game>()->Pawn);
-    GameLogic::StartMatch();
+void FixAbilities() {
+    //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
+    std::cout << "fixing abilities" << std::endl;
+    //AOrionPlayerController_Game* pc = (AOrionPlayerController_Game*)(Networking::GetNetDriver()->ClientConnections[0]->PlayerController);
+    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*, AActor*, AActor*)>(Globals::ModuleBase + 0x26BB00)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent, pc->PlayerState, pc->Pawn);
+    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*)>(Globals::ModuleBase + 0x297AD50)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent);
+    //std::cout << pc->GetFullName() << std::endl;
+    //std::cout << pc->Pawn->GetFullName() << std::endl;
+
+    /*
+    for (UGameplayAbility* ab : UObject::FindObjects<UGameplayAbility>()) {
+        if (ab->GetFullName().find("Default") == std::string::npos) {
+            std::cout << ab->GetFullName() << std::endl;
+            std::cout << ab->bIsActive << std::endl;
+            for (int i = 0; i < ab->ActiveTasks.Count(); i++) {
+                std::cout << ab->ActiveTasks[i]->GetFullName() << std::endl;
+            }
+        }
+    }
+    */
+
+    //THIS IS THE GOOD SHIT
+    /*
+    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
+        if (target->GetFullName().find("Default") == std::string::npos) {
+            std::cout << target->GetFullName() << std::endl;
+            target->ServerForceClientTargetData();
+            target->ConfirmOrCancel();
+
+
+            //
+            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2B8850)(target);
+            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2A1E90)(target);
+            //2A1CE0
+        }
+    }
+    */
+    for (AOrionTargetingMode* target : UObject::FindObjects<AOrionTargetingMode>()) {
+        std::cout << target->GetFullName() << std::endl;
+        target->ServerValidationFailPolicy = EOrionTargetingModeValidationFailPolicy::UseServerDataAndConfirm;
+    }
+    
+
+    /*
+    for (UOrionAbilitySet* aset : UObject::FindObjects<UOrionAbilitySet>()) {
+        if (aset->GetFullName().find("Kwang") != std::string::npos) {
+            std::cout << aset->GetFullName() << std::endl;
+            reinterpret_cast<void(*)(UOrionAbilitySet*, UAbilitySystemComponent*)>(Globals::ModuleBase + 0x26AB80)(aset, ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent);
+        }
+    }
+    */
+
+    //for (int i = 0; i < ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items.Count(); i++) {
+        //std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items[i].Ability->GetFullName() << std::endl;
+       // std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items[i].Handle.Handle << std::endl;
+    //}
+
+    //
+
+    //
+    //reinterpret_cast<void(*)(AOrionPlayerState_Game*)>(Globals::ModuleBase + 0x67C5B0)(((AOrionPlayerState_Game*)pc->PlayerState));
+    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*, AActor*, AActor*)>(Globals::ModuleBase + 0x26BB00)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent, pc->PlayerState, pc->Pawn);
+    //std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->OwnerActor->GetFullName() << std::endl;
+   // std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->AvatarActor->GetFullName() << std::endl;
+    //std::cout << SDKUtils::GetLastOfType<UOrionAbilitySystemComponent>()->AvatarActor->GetFullName() << std::endl;
+
 }
 
 void MainLoop() {
@@ -1233,22 +1374,7 @@ void MainLoop() {
 
     }
 
-    Hooking::ProcInGameThread(TriggerOnPossessLogic);
-
-    while (GetAsyncKeyState(VK_F7)) {
-
-    }
-}
-
-    //reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->ClientRestart(reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->Pawn);
-    //reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->MyOrionChar = reinterpret_cast<AOrionChar*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController->Pawn);
-    //reinterpret_cast<AOrionPlayerState_Game*>(reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController)->PlayerState)->CachedPawn = reinterpret_cast<AOrionChar*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController->Pawn);
-
-    //pcToOnRep = reinterpret_cast<AOrionPlayerController_Game*>(Networking::GetNetDriver()->ClientConnections[0]->PlayerController);
-
-    breakChannelClose = true;
-
-    //Hooking::ProcInGameThread(PlayerInit);
+    Hooking::ProcInGameThread(FixAbilities);
 
     while (GetAsyncKeyState(VK_F7)) {
 

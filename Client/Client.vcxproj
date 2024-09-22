@@ -155,6 +155,7 @@
     <ClCompile Include="SDK\BasicTypes_Package.cpp" />
     <ClCompile Include="SDK\CoreUObject_Package.cpp" />
     <ClCompile Include="SDK\Engine_Package.cpp" />
+    <ClCompile Include="SDK\GameplayAbilities_Package.cpp" />
     <ClCompile Include="SDK\Global_Package.cpp" />
     <ClCompile Include="SDK\OnlineSubsystemUtils_Package.cpp" />
     <ClCompile Include="SDK\OnlineSubsystem_Package.cpp" />

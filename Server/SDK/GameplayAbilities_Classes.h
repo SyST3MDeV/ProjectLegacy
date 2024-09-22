@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include "../UnrealContainers.h"
+
 /**
  * Name: Paragon
  * Version: v34
@@ -18,6 +20,7 @@ namespace CG
 	 * Class GameplayAbilities.AbilitySystemComponent
 	 * Size -> 0x1350 (FullSize[0x14A0] - InheritedSize[0x0150])
 	 */
+
 	class UAbilitySystemComponent : public UGameplayTasksComponent
 	{
 	public:
@@ -35,7 +38,7 @@ namespace CG
 		bool cachedIsNetSimulated;
 		struct FGameplayAbilitySpecContainer                       ActivatableAbilities;                                    // 0x0420(0x00C8) BlueprintVisible, BlueprintReadOnly, Net, RepNotify, Protected, NativeAccessSpecifierProtected
 		unsigned char                                              UnknownData_BBQJ[0x50];                                  // 0x04E8(0x0050) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
-		//TMap<FGameplayAbilitySpecHandleAndPredictionKey, FAbilityReplicatedDataCache> AbilityTargetDataMap;
+		//UC::TMap<FGameplayAbilitySpecHandleAndPredictionKey, void*> AbilityTargetDataMap;
 		TArray<class UGameplayAbility*>                            AllReplicatedInstancedAbilities;                         // 0x0538(0x0010) ZeroConstructor, Protected, NativeAccessSpecifierProtected
 		unsigned char                                              UnknownData_IKBG[0x3D8];                                 // 0x0548(0x03D8) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
 		TArray<class AGameplayAbilityTargetActor*>                 SpawnedTargetActors;                                     // 0x0920(0x0010) ZeroConstructor, NativeAccessSpecifierPublic
