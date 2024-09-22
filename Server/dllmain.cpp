@@ -828,6 +828,12 @@ namespace Networking {
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
 
+            AActor* OwningActor = Connection->OwningActor;
+
+            if (!(OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f))) {
+                continue;
+            }
+
             if (Connection->PlayerController) {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(Connection->PlayerController);
             }
@@ -1122,7 +1128,7 @@ namespace Hooking {
     void* origTargetDataReplicated = nullptr;
 
     void TargetDataReplicatedHook(UAbilityTask_WaitTargetData* targetData, void* a2) {
-        std::cout << "GWA" << std::endl;
+        std::cout << "Target Data Replicated!" << std::endl;
         return reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*, void* a2)>(origTargetDataReplicated)(targetData, a2);
     }
 
@@ -1134,7 +1140,7 @@ namespace Hooking {
 
     static int numTicksWaitedToStartMatch = 0;
 
-    const int maxNumTicksWaitedToStartMatch = 5000;
+    const int maxNumTicksWaitedToStartMatch = 100;
 
     int GameEngineTickHook(UGameEngine* gameengine, float deltatime, char a3) {
         if (triggerAbilityFailed) {
@@ -1159,6 +1165,27 @@ namespace Hooking {
         }
 
         return reinterpret_cast<int(*)(UGameEngine * gameengine, float deltatime, char a3)>(origGameEngineTick)(gameengine, deltatime, a3);
+    }
+
+    void* origApproveLogin = nullptr;
+    __int64 ApproveLoginHook(FString* options) {
+        std::cout << "Approved Login!" << std::endl;
+        return 0;
+    }
+
+    void* origStopDemo = nullptr;
+    void StopDemoHook(UDemoNetDriver* a1,
+        __int64 a2,
+        __int64 a3,
+        __int64 a4,
+        __int64 a5,
+        __int64 a6) {
+        return;
+    }
+
+    void* origDemoTickFlush = nullptr;
+    __int64 DemoTickFlushHook(UDemoNetDriver* a1, float a2) {
+        return 0;
     }
 
     void InitHooking() {
@@ -1230,7 +1257,7 @@ namespace Hooking {
 
         MH_EnableHook(notifyControlMessage);
 
-        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1DE6970);
+        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1FDD5A0);
 
         MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(CloseConnection), &origCloseConnection);
 
@@ -1269,6 +1296,26 @@ namespace Hooking {
         MH_CreateHook(gameEngineTick, reinterpret_cast<void*>(GameEngineTickHook), &origGameEngineTick);
 
         MH_EnableHook(gameEngineTick);
+
+        void* approveLogin = (void*)(Globals::ModuleBase + 0x1E8FA00);
+
+        MH_CreateHook(approveLogin, reinterpret_cast<void*>(ApproveLoginHook), &origApproveLogin);
+
+        MH_EnableHook(approveLogin);
+
+        void* stopDemo = (void*)(Globals::ModuleBase + 0x1E158F0);
+
+        MH_CreateHook(stopDemo, reinterpret_cast<void*>(StopDemoHook), &origStopDemo);
+
+        MH_EnableHook(stopDemo);
+
+        void* demoTickFlush = (void*)(Globals::ModuleBase + 0x1E19D80);
+
+        MH_CreateHook(demoTickFlush, reinterpret_cast<void*>(DemoTickFlushHook), &origDemoTickFlush);
+
+        MH_EnableHook(demoTickFlush);
+
+        //1E19D80
     }
 }
 
@@ -1338,10 +1385,12 @@ void FixAbilities() {
         }
     }
     */
-    for (AOrionTargetingMode* target : UObject::FindObjects<AOrionTargetingMode>()) {
-        std::cout << target->GetFullName() << std::endl;
-        target->ServerValidationFailPolicy = EOrionTargetingModeValidationFailPolicy::UseServerDataAndConfirm;
-    }
+    GameLogic::StartMatch();
+
+    //for (AOrionTargetingMode* target : UObject::FindObjects<AOrionTargetingMode>()) {
+        //std::cout << target->GetFullName() << std::endl;
+        //target->ServerValidationFailPolicy = EOrionTargetingModeValidationFailPolicy::UseServerDataAndConfirm;
+    //}
     
 
     /*
