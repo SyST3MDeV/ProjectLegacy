@@ -367,6 +367,18 @@ namespace DamageCalculations {
 }
 
 namespace GameplayAbilities {
+    struct AbilityProcInfo {
+        UOrionAbilitySystemComponent* asc;
+        int numTimesTicked;
+
+        AbilityProcInfo(UOrionAbilitySystemComponent* asc) {
+            this->asc = asc;
+            this->numTimesTicked = 0;
+        }
+    };
+
+    static std::vector<AbilityProcInfo> abilitiesToProc = std::vector<AbilityProcInfo>();
+
     /*
     void UAbilitySystemComponent::InternalServerTryActiveAbility(FGameplayAbilitySpecHandle Handle, bool InputPressed, const FPredictionKey& PredictionKey, const FGameplayEventData* TriggerEventData)
 {
@@ -873,7 +885,7 @@ namespace Hooking {
 
     static bool triggerAbilityFailed = false;
 
-    void TriggerAbilities() {
+    bool TriggerAbilities(UAbilitySystemComponent* asc){
         bool procdAnAbility = false;
 
         for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
@@ -889,7 +901,7 @@ namespace Hooking {
                     }
                 }
 
-                if (!alreadyProcd) {
+                if (!alreadyProcd && asc == target->AbilitySystemComponent) {
                     alreadyProcdTasks.push_back(target);
                     procdAnAbility = true;
                     std::cout << target->GetFullName() << std::endl;
@@ -901,9 +913,7 @@ namespace Hooking {
             }
         }
 
-        if (!procdAnAbility) {
-            triggerAbilityFailed = true;
-        }
+        return procdAnAbility;
     }
 
     //void ProcTriggerAbilityInDelay() {
@@ -935,10 +945,13 @@ namespace Hooking {
         }
 
         if (function == internalServerTryActiveAbilityFunctionWithEventData) {
-            triggerAbilityFailed = false;
             std::cout << "DUMMY FUNCTION CALLED" << std::endl;
 
-            TriggerAbilities();
+            UOrionAbilitySystemComponent* castObj = (UOrionAbilitySystemComponent*)object;
+
+            GameplayAbilities::abilitiesToProc.push_back(GameplayAbilities::AbilityProcInfo(castObj));
+
+            TriggerAbilities(castObj);
             
             /*
             for (int i = 0; i < castObj->AllReplicatedInstancedAbilities.Count(); i++) {
@@ -1031,7 +1044,7 @@ namespace Hooking {
 
             teamFlip = !teamFlip;
 
-            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Vamp.HeroData_Vamp"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition MasterSkin_Vamp.MasterSkin_Vamp"));
+            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_TwinBlast.HeroData_TwinBlast"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition TwinBlastSkin_Default.TwinBlastSkin_Default"));
             GameLogic::SetupHUDForController(controller);
             
             static int numPlayers = 0;
@@ -1143,9 +1156,23 @@ namespace Hooking {
     const int maxNumTicksWaitedToStartMatch = 100;
 
     int GameEngineTickHook(UGameEngine* gameengine, float deltatime, char a3) {
+        for (int i = 0; i < GameplayAbilities::abilitiesToProc.size(); i++) {
+            GameplayAbilities::AbilityProcInfo info = GameplayAbilities::abilitiesToProc.back();
+            bool procd = TriggerAbilities(info.asc);
+
+            info.numTimesTicked++;
+
+            GameplayAbilities::abilitiesToProc.pop_back();
+
+            if (!(procd || info.numTimesTicked > maxNumTicksAbilitiesTriggered)) {
+                GameplayAbilities::abilitiesToProc.push_back(info);
+            }
+        }
+
+        /*
         if (triggerAbilityFailed) {
             numTicksAbilitiesTriggered++;
-            TriggerAbilities();
+            bool procd = TriggerAbilities();
 
             if (numTicksAbilitiesTriggered > maxNumTicksAbilitiesTriggered) {
                 triggerAbilityFailed = false;
@@ -1154,6 +1181,7 @@ namespace Hooking {
         else {
             numTicksAbilitiesTriggered = 0;
         }
+        */
 
         if (Globals::shouldStartMatch) {
             numTicksWaitedToStartMatch++;
@@ -1163,6 +1191,7 @@ namespace Hooking {
                 GameLogic::StartMatch();
             }
         }
+        
 
         return reinterpret_cast<int(*)(UGameEngine * gameengine, float deltatime, char a3)>(origGameEngineTick)(gameengine, deltatime, a3);
     }
@@ -1348,74 +1377,9 @@ void OnGameInit() {
     Hooking::ProcInGameThread(OnMatchInit);
 }
 
-void FixAbilities() {
-    //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
+void ForceStartMatch() {
     std::cout << "fixing abilities" << std::endl;
-    //AOrionPlayerController_Game* pc = (AOrionPlayerController_Game*)(Networking::GetNetDriver()->ClientConnections[0]->PlayerController);
-    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*, AActor*, AActor*)>(Globals::ModuleBase + 0x26BB00)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent, pc->PlayerState, pc->Pawn);
-    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*)>(Globals::ModuleBase + 0x297AD50)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent);
-    //std::cout << pc->GetFullName() << std::endl;
-    //std::cout << pc->Pawn->GetFullName() << std::endl;
-
-    /*
-    for (UGameplayAbility* ab : UObject::FindObjects<UGameplayAbility>()) {
-        if (ab->GetFullName().find("Default") == std::string::npos) {
-            std::cout << ab->GetFullName() << std::endl;
-            std::cout << ab->bIsActive << std::endl;
-            for (int i = 0; i < ab->ActiveTasks.Count(); i++) {
-                std::cout << ab->ActiveTasks[i]->GetFullName() << std::endl;
-            }
-        }
-    }
-    */
-
-    //THIS IS THE GOOD SHIT
-    /*
-    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
-        if (target->GetFullName().find("Default") == std::string::npos) {
-            std::cout << target->GetFullName() << std::endl;
-            target->ServerForceClientTargetData();
-            target->ConfirmOrCancel();
-
-
-            //
-            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2B8850)(target);
-            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2A1E90)(target);
-            //2A1CE0
-        }
-    }
-    */
     GameLogic::StartMatch();
-
-    //for (AOrionTargetingMode* target : UObject::FindObjects<AOrionTargetingMode>()) {
-        //std::cout << target->GetFullName() << std::endl;
-        //target->ServerValidationFailPolicy = EOrionTargetingModeValidationFailPolicy::UseServerDataAndConfirm;
-    //}
-    
-
-    /*
-    for (UOrionAbilitySet* aset : UObject::FindObjects<UOrionAbilitySet>()) {
-        if (aset->GetFullName().find("Kwang") != std::string::npos) {
-            std::cout << aset->GetFullName() << std::endl;
-            reinterpret_cast<void(*)(UOrionAbilitySet*, UAbilitySystemComponent*)>(Globals::ModuleBase + 0x26AB80)(aset, ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent);
-        }
-    }
-    */
-
-    //for (int i = 0; i < ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items.Count(); i++) {
-        //std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items[i].Ability->GetFullName() << std::endl;
-       // std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->ActivatableAbilities.Items[i].Handle.Handle << std::endl;
-    //}
-
-    //
-
-    //
-    //reinterpret_cast<void(*)(AOrionPlayerState_Game*)>(Globals::ModuleBase + 0x67C5B0)(((AOrionPlayerState_Game*)pc->PlayerState));
-    //reinterpret_cast<void(*)(UOrionAbilitySystemComponent*, AActor*, AActor*)>(Globals::ModuleBase + 0x26BB00)(((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent, pc->PlayerState, pc->Pawn);
-    //std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->OwnerActor->GetFullName() << std::endl;
-   // std::cout << ((AOrionPlayerState_Game*)pc->PlayerState)->AbilitySystemComponent->AvatarActor->GetFullName() << std::endl;
-    //std::cout << SDKUtils::GetLastOfType<UOrionAbilitySystemComponent>()->AvatarActor->GetFullName() << std::endl;
-
 }
 
 void MainLoop() {
@@ -1423,7 +1387,7 @@ void MainLoop() {
 
     }
 
-    Hooking::ProcInGameThread(FixAbilities);
+    Hooking::ProcInGameThread(ForceStartMatch);
 
     while (GetAsyncKeyState(VK_F7)) {
 

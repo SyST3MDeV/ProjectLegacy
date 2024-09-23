@@ -366,3 +366,6 @@ FodyWeavers.xsd
 Injector.exe
 server.bat
 client.bat
+*.dll
+*.bat
+*.zip
