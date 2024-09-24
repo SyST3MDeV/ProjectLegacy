@@ -367,6 +367,8 @@ namespace DamageCalculations {
 }
 
 namespace GameplayAbilities {
+    static std::vector<UOrionAbilityTask_StartTargeting*> targetingTasks = std::vector<UOrionAbilityTask_StartTargeting*>();
+
     struct AbilityProcInfo {
         UOrionAbilitySystemComponent* asc;
         int numTimesTicked;
@@ -513,7 +515,7 @@ namespace Networking {
         std::vector<AActor*> actorsToConsider = std::vector<AActor*>();
 
         for (AActor* actor : allActors) {
-            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos) //
+            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos || !actor->bReplicates) //
                 continue;
 
             reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + 0x1b743d0)(actor, GetNetDriver());
@@ -619,7 +621,7 @@ namespace Networking {
                 std::cout << "Valid ActorInfo!" << std::endl;
                 AActor* actor = ActorInfo->actor;
 
-                if (actor->GetRemoteRole() == ENetRole::ROLE_None) {
+                if (actor->GetRemoteRole() == ENetRole::ROLE_None || actor->GetFullName().find("SpawnPad_Agent") != std::string::npos) {
                     continue;
                 }
 
@@ -823,6 +825,9 @@ namespace Networking {
 
             AActor* actor = (AActor*)obj;
 
+            if (reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + 0x1B89A60)(actor) != Globals::GetGWorld())
+                continue;
+
             if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + 0x2AFBB0)(actor))
                 continue;
 
@@ -888,7 +893,7 @@ namespace Hooking {
     bool TriggerAbilities(UAbilitySystemComponent* asc){
         bool procdAnAbility = false;
 
-        for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
+        for (UOrionAbilityTask_StartTargeting* target : GameplayAbilities::targetingTasks) {
             static std::vector< UOrionAbilityTask_StartTargeting*> alreadyProcdTasks = std::vector<UOrionAbilityTask_StartTargeting*>();
 
             if (target->GetFullName().find("Default") == std::string::npos) {
@@ -1044,7 +1049,7 @@ namespace Hooking {
 
             teamFlip = !teamFlip;
 
-            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_TwinBlast.HeroData_TwinBlast"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition TwinBlastSkin_Default.TwinBlastSkin_Default"));
+            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Hammer.HeroData_Hammer"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition HammerSkin_Default.HammerSkin_Default"));
             GameLogic::SetupHUDForController(controller);
             
             static int numPlayers = 0;
@@ -1217,6 +1222,15 @@ namespace Hooking {
         return 0;
     }
 
+    void* origNewObjectStartTargeting = nullptr;
+    UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(__int64 a1, __int64 a2) {
+        UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(__int64, __int64)>(origNewObjectStartTargeting)(a1, a2);
+
+        GameplayAbilities::targetingTasks.push_back(target);
+
+        return target;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1344,7 +1358,13 @@ namespace Hooking {
 
         MH_EnableHook(demoTickFlush);
 
-        //1E19D80
+        void* startTargeting = (void*)(Globals::ModuleBase + 0x028B5D0);
+
+        MH_CreateHook(startTargeting, reinterpret_cast<void*>(NewObjectStartTargetingHook), &origNewObjectStartTargeting);
+
+        MH_EnableHook(startTargeting);
+
+        //028B5D0
     }
 }
 
@@ -1370,7 +1390,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
     Sleep(20 * 1000);
 
