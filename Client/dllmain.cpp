@@ -3,8 +3,10 @@
 #include <thread>
 #include <iostream>
 #include <format>
+#include <fstream>
 
 #include "MinHook/include/MinHook.h"
+#include "json/json.h"
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
@@ -275,9 +277,47 @@ void InitConsole() {
     freopen_s(&f, "CONOUT$", "w", stdout);
 }
 
+void ConnectToMatch() {
+    std::ifstream config("config.json");
+    std::stringstream sstream;
+    std::string configString;
+
+    sstream << config.rdbuf();
+
+    configString = sstream.str();
+
+    Json::Value configValue = Json::Value();
+
+    Json::Reader reader = Json::Reader();
+
+    reader.parse(configString, configValue);
+
+    std::string nwIp(configValue["ip"].asString());
+
+    std::wstring ip(nwIp.begin(), nwIp.end());
+
+    std::string nwDisplayName(configValue["displayname"].asString());
+
+    std::wstring displayname(nwDisplayName.begin(), nwDisplayName.end());
+
+    std::string nwHero(configValue["hero"].asString());
+
+    std::wstring hero(nwHero.begin(), nwHero.end());
+
+    std::string nwTeam(configValue["team"].asString());
+
+    std::wstring team(nwTeam.begin(), nwTeam.end());
+
+    std::wstring baseCmd(L"open ");
+    std::wstring finalCmd = baseCmd.append(ip).append(L"?displayname=").append(displayname).append(L"?hero=").append(hero).append(L"?team=").append(team);
+
+    EngineLogic::ExecuteConsoleCommand(finalCmd.c_str());
+}
+
 void OnGameInit() {
-    std::cout << "Enabling game console..." << std::endl;
-    EngineLogic::EnableGameConsole();
+    //std::cout << "Enabling game console..." << std::endl;
+    //EngineLogic::EnableGameConsole();
+    Hooking::ProcInGameThread(ConnectToMatch);
 }
 
 void FixAbilities() {
@@ -288,7 +328,6 @@ void FixAbilities() {
             std::cout << target->GetFullName() << std::endl;
 
             target->ConfirmOrCancel();
-
 
 
             //target->ServerForceClientTargetData();
@@ -314,7 +353,7 @@ void MainLoop() {
 void Main() {
     CG::InitSdk();
 
-    InitConsole();
+    //InitConsole();
 
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 

@@ -56,5 +56,8 @@
     <ClCompile Include="SDK\GameplayAbilities_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="jsoncpp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -334,11 +334,13 @@ namespace DamageCalculations {
             reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(damage, nullptr);
         }
 
+        /*
         static UOrionGameplayCueManager* manager = nullptr;
 
         if (!manager) {
             manager = SDKUtils::GetLastOfType<UOrionGameplayCueManager>();
         }
+        */
 
         FGameplayTag tag = FGameplayTag();
         FGameplayCueParameters cueParams = FGameplayCueParameters();
@@ -354,7 +356,16 @@ namespace DamageCalculations {
             tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
         }
 
-        reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
+        UGameplayCueNotify_Static* staticThingy = SDKUtils::GetLastOfType<UGameplayCueNotify_Static>();
+
+        staticThingy->GameplayCueName = tag.TagName;
+        staticThingy->GameplayCueTag = tag;
+
+        staticThingy->K2_HandleGameplayCue(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, EGameplayCueEvent::Executed, cueParams);
+
+        //reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_ExecuteGameplayCue(tag, cueParams);
+
+        //reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
     }
 
     void DoDamagePipeline(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) {
@@ -1036,20 +1047,77 @@ namespace Hooking {
         GameLogic::RestartClient(pc);
     }
 
-    static bool teamFlip = false;
+    struct PlayerInfo {
+        std::string hero;
+        std::string team;
+        std::string name;
+    };
+
+    std::vector<std::pair<APlayerController*, PlayerInfo>> playerInfoArray = std::vector<std::pair<APlayerController*, PlayerInfo>>();
 
     void* origGameModeMOBAPostLogin = nullptr;
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
         if (controller != Globals::GetLocalPlayerController< AOrionPlayerController_Game>()) {
+            PlayerInfo info;
+
+            for (auto pair : playerInfoArray) {
+                if (pair.first == controller) {
+                    info = pair.second;
+                    break;
+                }
+            }
+
             controller->ClientHandlePostLogin();
             controller->ClientHandleMatchIsWaitingToStart();
 
-            GameLogic::AddControllerToTeam(controller, teamFlip ? EOrionTeam::TeamRed : EOrionTeam::TeamBlue);
+            GameLogic::AddControllerToTeam(controller, info.team.find("1") != std::string::npos ? EOrionTeam::TeamRed : EOrionTeam::TeamBlue);
 
-            teamFlip = !teamFlip;
+            UOrionHeroData* heroData = new UOrionHeroData();
+            UOrionSkinItemDefinition* skin = new UOrionSkinItemDefinition();
 
-            GameLogic::SetControllerHeroData(controller, UObject::FindObject<UOrionHeroData>("OrionHeroData HeroData_Hammer.HeroData_Hammer"), UObject::FindObject<UOrionSkinItemDefinition>("OrionSkinItemDefinition HammerSkin_Default.HammerSkin_Default"));
+            for (int32_t i = 0; i < UObject::GetGlobalObjects().Count(); ++i)
+            {
+                auto object = UObject::GetGlobalObjects().GetByIndex(i);
+
+                if (!object)
+                    continue;
+
+                if (!object->IsA(UOrionHeroData::StaticClass()))
+                    continue;
+
+                if (object->GetFullName().find(info.hero) != std::string::npos)
+                    heroData = reinterpret_cast<UOrionHeroData*>(object);
+            }
+
+            for (int32_t i = 0; i < UObject::GetGlobalObjects().Count(); ++i)
+            {
+                auto object = UObject::GetGlobalObjects().GetByIndex(i);
+
+                if (!object)
+                    continue;
+
+                if (!object->IsA(UOrionSkinItemDefinition::StaticClass()))
+                    continue;
+
+                if (object->GetFullName().find(info.hero) != std::string::npos)
+                    skin = reinterpret_cast<UOrionSkinItemDefinition*>(object);
+            }
+
+            std::wstring wname(info.name.begin(), info.name.end());
+
+            FString* nameString = (FString * )EngineLogic::Malloc(sizeof(FString), 0);
+
+            wchar_t* wchar = (wchar_t*)EngineLogic::Malloc(sizeof(wchar_t) * wname.size(), 0);
+
+            memcpy(wchar, wname.c_str(), wname.size());
+
+            nameString->_count = wname.size();
+            nameString->_max = wname.size();
+
+            controller->SetName(*nameString);
+
+            GameLogic::SetControllerHeroData(controller, heroData, skin);
             GameLogic::SetupHUDForController(controller);
             
             static int numPlayers = 0;
@@ -1231,6 +1299,36 @@ namespace Hooking {
         return target;
     }
 
+    //virtual class APlayerController * __ptr64 __cdecl AOrionGameMode_MOBA::Login(class UPlayer * __ptr64,enum ENetRole,class FString const & __ptr64,class FString const & __ptr64,struct FUniqueNetIdRepl const & __ptr64,class FString & __ptr64)
+
+    void* origLogin = nullptr;
+    APlayerController* LoginHook(AOrionGameMode_MOBA* GameMode, UPlayer* player, ENetRole role, FString* portal, FString* options, FUniqueNetIdRepl* NetID, FString* err) {
+        APlayerController* ret = reinterpret_cast<APlayerController* (*)(AOrionGameMode_MOBA * GameMode, UPlayer * player, ENetRole role, FString * portal, FString * options, FUniqueNetIdRepl * NetID, FString * err)>(origLogin)(GameMode, player, role, portal, options, NetID, err);
+
+        std::wstring optionsWString(options->_data);
+
+        std::string optionsString(optionsWString.begin(), optionsWString.end());
+
+        PlayerInfo info = PlayerInfo();
+
+        info.hero = optionsString.substr(optionsString.find("?hero=") + std::string("?hero=").size());
+        info.hero = info.hero.substr(0, info.hero.find("?"));
+
+        info.name = optionsString.substr(optionsString.find("?displayname=") + std::string("?displayname=").size());
+        info.name = info.name.substr(0, info.name.find("?"));
+
+        info.team = optionsString.substr(optionsString.find("?team=") + std::string("?team=").size());
+        info.team = info.team.substr(0, info.team.find("?"));
+
+        std::cout << info.hero << std::endl;
+        std::cout << info.name << std::endl;
+        std::cout << info.team << std::endl;
+
+        playerInfoArray.push_back(std::pair<APlayerController*, PlayerInfo>(ret, info));
+
+        return ret;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1364,7 +1462,13 @@ namespace Hooking {
 
         MH_EnableHook(startTargeting);
 
-        //028B5D0
+        void* loginHook = (void*)(Globals::ModuleBase + 0x488FB0);
+
+        MH_CreateHook(loginHook, reinterpret_cast<void*>(LoginHook), &origLogin);
+
+        MH_EnableHook(loginHook);
+
+        //488FB0
     }
 }
 
