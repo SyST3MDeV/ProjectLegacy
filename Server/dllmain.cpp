@@ -29,7 +29,7 @@ namespace Settings {
         }
     };
 
-    const int NUM_PLAYERS_TO_START = 2;
+    const int NUM_PLAYERS_TO_START = 10;
     const std::string SERVER_KEY = "pg";
     const Player PLAYER_ARRAY[] = {Player("gwog", "gwog :3", "OrionHeroData HeroData_Vamp.HeroData_Vamp", "OrionSkinItemDefinition MasterSkin_Vamp.MasterSkin_Vamp", EOrionTeam::TeamBlue), Player("notgwog", "not gwog :/", "OrionHeroData HeroData_Kurohane.HeroData_Kurohane", "OrionSkinItemDefinition MasterSkin_Kurohane.MasterSkin_Kurohane", EOrionTeam::TeamRed)};
 }
@@ -1496,7 +1496,7 @@ void OnGameInit() {
     std::cout << "Loading map..." << std::endl;
     EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
-    Sleep(20 * 1000);
+    Sleep(120 * 1000);
 
     Hooking::ProcInGameThread(OnMatchInit);
 }
