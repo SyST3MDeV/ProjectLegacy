@@ -1,2 +1,3 @@
 EXPORTS
 	CallNtPowerInformation = CallNtPowerInformationFake
+	PowerDeterminePlatformRole = PowerDeterminePlatformRoleFake

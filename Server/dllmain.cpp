@@ -10,6 +10,8 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
+#define SLOW false
+
 using namespace CG;
 
 namespace Settings {
@@ -345,8 +347,8 @@ namespace DamageCalculations {
         FGameplayTag tag = FGameplayTag();
         FGameplayCueParameters cueParams = FGameplayCueParameters();
 
-        cueParams.NormalizedMagnitude = 100.0;
-        cueParams.RawMagnitude = 100.0;
+        cueParams.NormalizedMagnitude = damage;
+        cueParams.RawMagnitude = damage;
         cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
 
         if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
@@ -691,6 +693,8 @@ namespace Networking {
         return (int*)((__int64)connection + 0x7F);
     }
 
+    static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
+
     void ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList, std::vector<FActorPriority>& OutPriorityList, std::vector<FActorPriority>& OutPriorityActors) {
         static int NetTag = 0;
 
@@ -711,11 +715,26 @@ namespace Networking {
 
                 UActorChannel* Channel = nullptr;
 
+                for (UActorChannel* cmpChannel : actorChannels) {
+                    if (cmpChannel->Actor != Actor)
+                        continue;
+
+                    if (cmpChannel->Connection != connection)
+                        continue;
+
+                    Channel = cmpChannel;
+                    break;
+                }
+                
+                /*
                 for (int i = 0; i < connection->OpenChannels.Count(); i++) {
-                    if (connection->OpenChannels[i]->IsA(UActorChannel::StaticClass()) && ((UActorChannel*)(connection->OpenChannels[i]))->Actor == Actor) {
+                    if (connection->OpenChannels[i]->Class == UActorChannel::StaticClass() && ((UActorChannel*)(connection->OpenChannels[i]))->Actor == Actor) {
                         Channel = (UActorChannel*)(connection->OpenChannels[i]);
+                        break;
                     }
                 }
+                */
+                
 
                 if (Actor->NetTag != NetTag) {
                     Actor->NetTag = NetTag;
@@ -751,14 +770,6 @@ namespace Networking {
                 if (Actor->IsA(APlayerController::StaticClass()) && Actor != Connection->PlayerController) {
                     continue;
                 }
-
-                if (Actor->GetFullName().find("Default") != std::string::npos) {
-                    continue;
-                }
-
-                if (Actor->RemoteRole == ENetRole::ROLE_None) {
-                    continue;
-                }
                 
                 FinalRelevantCount++;
 
@@ -767,13 +778,15 @@ namespace Networking {
 
                     if (Channel) {
                         reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(Channel, Actor); //SetChannelActor
+
+                        actorChannels.push_back(Channel);
                     }
                 }
 
                 if (Channel && Channel->Actor) {
                     if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //IsNetReady
                         if (reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + 0x1E0C1D0)(Channel)) { //ReplicateActor
-                           // std::cout << "Replicated Actor!" << std::endl;
+                            //std::cout << "Replicated Actor " << Actor->GetFullName() << std::endl;
                             
                             ActorUpdatesThisConnectionSent++;
 
@@ -784,12 +797,20 @@ namespace Networking {
                             PriorityActors[j].ActorInfo->OptimalNetUpdateDelta = std::clamp(DeltaBetweenReplications * 0.7f, MinOptimalDelta, MaxOptimalDelta);
                             PriorityActors[j].ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
                         }
+                        else {
+                            /*
+                            if (Channel->Actor)
+                                std::cout << "Replication Failed for " << Channel->Actor->GetFullName() << std::endl;
+                            else
+                                std::cout << "Replication Failed for nonexistent actor!" << std::endl;
+                                */
+                        }
 
                         ActorUpdatesThisConnection++;
                         OutUpdated++;
                     }
                     else {
-                       // std::cout << "Replication Failed, Forcing Net Update!" << std::endl;
+                        //std::cout << "Replication Failed, Forcing Net Update!" << std::endl;
                         reinterpret_cast<void(*)(AActor*)>(Globals::ModuleBase + 0x1B7E250)(Actor); //AActor::ForceNetUpdate
                     }
 
@@ -825,19 +846,29 @@ namespace Networking {
 
         std::vector<FNetworkObjectInfo*> ConsiderList = std::vector<FNetworkObjectInfo*>();
 
-        for (int i = 0; i < UObject::GObjects->Count(); i++) {
-            UObject* obj = UObject::GObjects->GetByIndex(i);
+        TArray<AActor*>* actors = (TArray<AActor*>*)EngineLogic::Malloc(sizeof(TArray<AActor*>), 0);
+        Globals::GetGameplayStatics()->STATIC_GetAllActorsOfClass(Globals::GetGWorld(), AActor::StaticClass(), actors);
 
-            if (!obj)
+        for (int i = 0; i < actors->Count(); i++) { //UObject::GObjects->Count()
+            //UObject* obj = //UObject::GObjects->GetByIndex(i);
+
+            //if (!obj)
+                //continue;
+
+            //if (!obj->IsA(AActor::StaticClass()))
+                //continue;
+
+            AActor* actor = actors->_data[i];//(AActor*)obj;
+
+            if (!actor)
                 continue;
 
-            if (!obj->IsA(AActor::StaticClass()))
+            if (actor->RemoteRole == ENetRole::ROLE_None) {
                 continue;
+            }
 
-            AActor* actor = (AActor*)obj;
-
-            if (reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + 0x1B89A60)(actor) != Globals::GetGWorld())
-                continue;
+            //if (reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + 0x1B89A60)(actor) != Globals::GetGWorld())
+                //continue;
 
             if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + 0x2AFBB0)(actor))
                 continue;
@@ -1023,7 +1054,7 @@ namespace Hooking {
     void* uengineGetNetMode = nullptr;
 
     __int64 GetNetModeHook() {
-        return 1;
+        return 2;
     }
 
     void* origStatManagerCrash = nullptr;
@@ -1229,6 +1260,13 @@ namespace Hooking {
     const int maxNumTicksWaitedToStartMatch = 100;
 
     int GameEngineTickHook(UGameEngine* gameengine, float deltatime, char a3) {
+        static bool matchStarted = false;
+        if(GetAsyncKeyState(VK_F7) && !matchStarted) {
+            matchStarted = true;
+            GameLogic::StartMatch();
+        }
+
+        /*
         for (int i = 0; i < GameplayAbilities::abilitiesToProc.size(); i++) {
             GameplayAbilities::AbilityProcInfo info = GameplayAbilities::abilitiesToProc.back();
             bool procd = TriggerAbilities(info.asc);
@@ -1241,6 +1279,7 @@ namespace Hooking {
                 GameplayAbilities::abilitiesToProc.push_back(info);
             }
         }
+        */
 
         /*
         if (triggerAbilityFailed) {
@@ -1294,7 +1333,12 @@ namespace Hooking {
     UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(__int64 a1, __int64 a2) {
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(__int64, __int64)>(origNewObjectStartTargeting)(a1, a2);
 
-        GameplayAbilities::targetingTasks.push_back(target);
+        if (target->GetFullName().find("Primary") != std::string::npos && target->AbilitySystemComponent && target->AbilitySystemComponent->OwnerActor && target->AbilitySystemComponent->OwnerActor->IsA(AOrionPlayerState_Game::StaticClass())) {
+            target->ConfirmOrWait();
+        }
+        else {
+            GameplayAbilities::targetingTasks.push_back(target);
+        }
 
         return target;
     }
@@ -1496,7 +1540,11 @@ void OnGameInit() {
     std::cout << "Loading map..." << std::endl;
     EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
-    Sleep(120 * 1000);
+#if SLOW
+    Sleep(100 * 1000);
+#else
+    Sleep(30 * 1000);
+#endif
 
     Hooking::ProcInGameThread(OnMatchInit);
 }
@@ -1504,18 +1552,6 @@ void OnGameInit() {
 void ForceStartMatch() {
     std::cout << "fixing abilities" << std::endl;
     GameLogic::StartMatch();
-}
-
-void MainLoop() {
-    while (!GetAsyncKeyState(VK_F7)) {
-
-    }
-
-    Hooking::ProcInGameThread(ForceStartMatch);
-
-    while (GetAsyncKeyState(VK_F7)) {
-
-    }
 }
 
 void Main() {
@@ -1527,12 +1563,17 @@ void Main() {
 
     Hooking::InitHooking();
 
-    Sleep(25 * 1000);
-
+#if SLOW
+    Sleep(60 * 1000);
+#else
+    Sleep(30 * 1000);
+#endif
     OnGameInit();
 
+    Sleep(1 * 1000 * 1000 * 1000);
+
     while (true) {
-        MainLoop();
+
     }
 }
 
