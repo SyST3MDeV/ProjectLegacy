@@ -1,5 +1,6 @@
 #include "SDK.h"
 #include "UnrealContainers.h"
+#include "Aeyth-Dev/Externals.h"
 
 #include <thread>
 #include <iostream>
@@ -502,7 +503,7 @@ namespace Networking {
 
         FURL* url = (FURL*)EngineLogic::Malloc(sizeof(FURL), 0);
 
-        url->Port = 7777;
+        url->Port = Global_Port;
         url->Valid = 1;
 
         FString* err = (FString*)EngineLogic::Malloc(sizeof(FString), 0);
@@ -1516,15 +1517,6 @@ namespace Hooking {
     }
 }
 
-
-void Log(const std::string& msg) {
-    std::cout << msg << std::endl;
-}
-
-void Tick(const int& T) {
-    Sleep(T * 1000);
-}
-
 void InitConsole() {
     AllocConsole();
     FILE* f = new FILE();
@@ -1540,40 +1532,69 @@ void OnMatchInit() {
 
     std::cout << "Listening for connections..." << std::endl;
     Networking::Listen();
+    DebugLog("INFO", "Started listening on port " + std::to_string(Global_Port));
 }
 
 void OnGameInit() {
-    std::cout << "Enabling game console..." << std::endl;
+    Log("Enabling game console...");
     EngineLogic::EnableGameConsole();
 
     Log("Loading map: ");
-    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
-    Tick(10);
-    EngineLogic::ExecuteConsoleCommand(L"hideloadingscreen");
-    Log("Hiding loading screen.");
-    Tick(3);
+    EngineLogic::LoadMap(Convertion(Global_Map).c_str(), L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    
 /*#if SLOW
     Sleep(100 * 1000);
 #else
     Sleep(30 * 1000);
 #endif*/
+    Tick(40);
 
     Hooking::ProcInGameThread(OnMatchInit);
 }
 
 void ForceStartMatch() {
-    std::cout << "fixing abilities" << std::endl;
+    Log("Fixing abilities");
     GameLogic::StartMatch();
 }
 
-void Main() {
+void Initialize() {
+
     CG::InitSdk();
 
     InitConsole();
 
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 
+    WCHAR EXEPath[MAX_PATH] = { 0 };
+    GetModuleFileName(NULL, EXEPath, MAX_PATH);
+
+    std::wstring DirectoryPath(EXEPath);
+    size_t EndDL = DirectoryPath.find_last_of(L"\\/");
+
+    if (EndDL != std::wstring::npos) {
+        DirectoryPath = DirectoryPath.substr(0, EndDL + 1);
+        MainFolder = DirectoryPath.substr(0, EndDL - 24) + L"ProjectLegacy\\";
+       // MainFolder = DirectoryPath;
+        std::wstring ShippingEXE = EXEPath + EndDL + 1;
+        Config = MainFolder + L"Config.ini";
+        Logger = MainFolder + L"ProjectLegacy.log";
+
+        InitLog();
+
+        DebugLog("INFO", Revertion(ShippingEXE));
+        DebugLog("INFO", "The Global Base Address [GBA] is " + std::to_string(Globals::ModuleBase));
+        ParseCFG();
+    }
+    else {
+        abort();
+    }
+}
+
+void Main() {
+    Tick(5);
     Hooking::InitHooking();
+
+    Tick(45);
 
 /*#if SLOW
     Sleep(60 * 1000);
@@ -1589,14 +1610,12 @@ void Main() {
     }
 }
 
-BOOL APIENTRY DllMain( HMODULE hModule,
-                       DWORD  ul_reason_for_call,
-                       LPVOID lpReserved
-                     )
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
     if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
+        std::thread i(Initialize);
         std::thread t(Main);
-
+        i.detach();
         t.detach();
     }
 }

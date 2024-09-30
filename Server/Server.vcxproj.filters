@@ -16,6 +16,9 @@
     <Filter Include="SDK">
       <UniqueIdentifier>{15313010-defd-45cf-92cc-5351f99c527e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Aeyth8">
+      <UniqueIdentifier>{1efe005e-e4f2-42be-963c-e676ac183e6e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -26,6 +29,9 @@
     </ClInclude>
     <ClInclude Include="UnrealContainers.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Aeyth-Dev\Externals.h">
+      <Filter>Aeyth8</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -58,6 +64,9 @@
     </ClCompile>
     <ClCompile Include="SDK\GameplayAbilities_Package.cpp">
       <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Aeyth-Dev\Externals.cpp">
+      <Filter>Aeyth8</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
