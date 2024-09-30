@@ -1516,6 +1516,15 @@ namespace Hooking {
     }
 }
 
+
+void Log(const std::string& msg) {
+    std::cout << msg << std::endl;
+}
+
+void Tick(const int& T) {
+    Sleep(T * 1000);
+}
+
 void InitConsole() {
     AllocConsole();
     FILE* f = new FILE();
@@ -1523,10 +1532,10 @@ void InitConsole() {
 }
 
 void OnMatchInit() {
-    std::cout << "Setting up teams..." << std::endl;
+    Log("Setting up teams...");
     GameLogic::SetupTeams();
 
-    std::cout << "Hiding loading screen..." << std::endl;
+    Log("Hiding loading screen...");
     GameLogic::HideLoadingScreen();
 
     std::cout << "Listening for connections..." << std::endl;
@@ -1537,14 +1546,17 @@ void OnGameInit() {
     std::cout << "Enabling game console..." << std::endl;
     EngineLogic::EnableGameConsole();
 
-    std::cout << "Loading map..." << std::endl;
+    Log("Loading map: ");
     EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
-
-#if SLOW
+    Tick(10);
+    EngineLogic::ExecuteConsoleCommand(L"hideloadingscreen");
+    Log("Hiding loading screen.");
+    Tick(3);
+/*#if SLOW
     Sleep(100 * 1000);
 #else
     Sleep(30 * 1000);
-#endif
+#endif*/
 
     Hooking::ProcInGameThread(OnMatchInit);
 }
@@ -1563,11 +1575,11 @@ void Main() {
 
     Hooking::InitHooking();
 
-#if SLOW
+/*#if SLOW
     Sleep(60 * 1000);
 #else
     Sleep(30 * 1000);
-#endif
+#endif*/
     OnGameInit();
 
     Sleep(1 * 1000 * 1000 * 1000);
