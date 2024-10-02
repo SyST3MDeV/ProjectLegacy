@@ -234,6 +234,16 @@ namespace Hooking {
         return true;
     }
 
+    void* origIsCardInDeck = nullptr;
+    bool IsCardInDeckHook(FOrionLinkedCardsArray* a1, FOrionCardInstance* a2) {
+        return true;
+    }
+
+    void* origIsCardInDeck2 = nullptr;
+    bool IsCardInDeck2Hook(FOrionLinkedCards* a1, FOrionCardInstance* a2) {
+        return true;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -266,6 +276,18 @@ namespace Hooking {
         MH_CreateHook(targetingValid, reinterpret_cast<void*>(TargetingValidHook), &origIsTargetingValid);
 
         //MH_EnableHook(targetingValid);
+
+        void* isCardInDeck = (void*)(Globals::ModuleBase + 0x4B8060);
+
+        MH_CreateHook(isCardInDeck, reinterpret_cast<void*>(IsCardInDeckHook), &origIsCardInDeck);
+
+        MH_EnableHook(isCardInDeck);
+
+        void* isCardInDeck2 = (void*)(Globals::ModuleBase + 0x4B81B0);
+
+        MH_CreateHook(isCardInDeck2, reinterpret_cast<void*>(IsCardInDeck2Hook), &origIsCardInDeck2);
+
+        MH_EnableHook(isCardInDeck2);
 
         //0x26DE70
     }

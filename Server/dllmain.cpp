@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW false
+#define SLOW true
 
 using namespace CG;
 
@@ -249,6 +249,66 @@ namespace GameLogic {
         }
 
         return false;
+    }
+
+    void AddAllCardsToControllersDeck(AOrionPlayerController_Game* controller) {
+        AOrionPlayerState_Game* ps = reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState);
+
+        std::vector<FOrionCardInstance*> cards = std::vector<FOrionCardInstance*>();
+
+        for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
+            if (cardData->GetFullName().find("Default") == std::string::npos) {
+                AOrionCard* cardActor = reinterpret_cast<AOrionCard * (*)(AOrionPlayerState_Game*, UOrionCardData*)>(Globals::ModuleBase + 0x4CBB00)(ps, cardData);
+                FOrionCardInstance* instance = reinterpret_cast<FOrionCardInstance*>(EngineLogic::Malloc(sizeof(FOrionCardInstance), 0));
+                instance->Actor = cardActor;
+                instance->Card = cardData;
+                instance->Category = EOrionDeckCategory::Mid;
+
+                cards.push_back(instance);
+            }
+        }
+
+        /*
+        ps->CardsInDeck.CardsInDeck._data = (FOrionLinkedCards*)EngineLogic::Malloc(sizeof(FOrionLinkedCards) * cards.size(), 0);
+        ps->CardsInDeck.CardsInDeck._count = cards.size();
+        ps->CardsInDeck.CardsInDeck._max = cards.size();
+
+        for (int i = 0; i < cards.size(); i++) {
+            ps->CardsInDeck.CardsInDeck[i] = FOrionLinkedCards();
+            ps->CardsInDeck.CardsInDeck[i].RootCard = *cards[i];
+            ps->CardsInDeck.CardsInDeck[i].RootStackCount = 1;
+            ps->CardsInDeck.CardsInDeck[i].RootTotalCount = 1;
+        }
+        */
+
+        std::vector<FOrionCardInstance*> cards2 = std::vector<FOrionCardInstance*>();
+
+        for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
+            if (cardData->GetFullName().find("Default") == std::string::npos) {
+                AOrionCard* cardActor = reinterpret_cast<AOrionCard * (*)(AOrionPlayerState_Game*, UOrionCardData*)>(Globals::ModuleBase + 0x4CBB00)(ps, cardData);
+                if (cardActor) {
+                    FOrionCardInstance* instance = reinterpret_cast<FOrionCardInstance*>(EngineLogic::Malloc(sizeof(FOrionCardInstance), 0));
+                    instance->Actor = cardActor;
+                    instance->Card = cardData;
+                    instance->Category = EOrionDeckCategory::Mid;
+
+                    cards2.push_back(instance);
+                }
+            }
+        }
+
+        ps->OriginalCardsInDeck.CardsInDeck._data = (FOrionLinkedCards*)EngineLogic::Malloc(sizeof(FOrionLinkedCards) * cards2.size(), 0);
+        ps->OriginalCardsInDeck.CardsInDeck._count = cards.size();
+        ps->OriginalCardsInDeck.CardsInDeck._max = cards.size();
+
+        for (int i = 0; i < cards.size(); i++) {
+            ps->OriginalCardsInDeck.CardsInDeck[i] = FOrionLinkedCards();
+            ps->OriginalCardsInDeck.CardsInDeck[i].RootCard = *cards2[i];
+            ps->OriginalCardsInDeck.CardsInDeck[i].RootStackCount = 1;
+            ps->OriginalCardsInDeck.CardsInDeck[i].RootTotalCount = 1;
+        }
+
+        reinterpret_cast<void(*)(AOrionPlayerState_Game*)>(Globals::ModuleBase + 0x68C500)(ps);
     }
 
     void StartMatch() {   
@@ -1228,6 +1288,7 @@ namespace Hooking {
             controller->SetName(nameString);
 
             GameLogic::SetControllerHeroData(controller, heroData, skin);
+            GameLogic::AddAllCardsToControllersDeck(controller);
             GameLogic::SetupHUDForController(controller);
             
             static int numPlayers = 0;
@@ -1452,6 +1513,21 @@ namespace Hooking {
         return ret;
     }
 
+    void* origIsCardInDeck = nullptr;
+    bool IsCardInDeckHook(FOrionLinkedCardsArray* a1, FOrionCardInstance* a2) {
+        return true;
+    }
+
+    void* origRemoveCard = nullptr;
+    void RemoveCardHook(AOrionPlayerState_Base* a1, FOrionCardInstance* a2) {
+        return;
+    }
+
+    void* origIsCardInDeck2 = nullptr;
+    bool IsCardInDeck2Hook(FOrionLinkedCards* a1, FOrionCardInstance* a2) {
+        return true;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1591,7 +1667,25 @@ namespace Hooking {
 
         MH_EnableHook(loginHook);
 
-        //488FB0
+        void* isCardInDeck = (void*)(Globals::ModuleBase + 0x4B8060);
+
+        MH_CreateHook(isCardInDeck, reinterpret_cast<void*>(IsCardInDeckHook), &origIsCardInDeck);
+
+        MH_EnableHook(isCardInDeck);
+
+        void* removeCard = (void*)(Globals::ModuleBase + 0x687230);
+
+        MH_CreateHook(removeCard, reinterpret_cast<void*>(RemoveCardHook), &origRemoveCard);
+
+        MH_EnableHook(removeCard);
+
+        void* isCardInDeck2 = (void*)(Globals::ModuleBase + 0x4B81B0);
+
+        MH_CreateHook(isCardInDeck2, reinterpret_cast<void*>(IsCardInDeck2Hook), &origIsCardInDeck2);
+
+        MH_EnableHook(isCardInDeck2);
+
+        //4B8060
     }
 }
 
