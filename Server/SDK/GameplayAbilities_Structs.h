@@ -881,6 +881,36 @@ namespace CG
 		unsigned char                                              UnknownData_NG01[0x10];                                  // 0x0000(0x0010) MISSED OFFSET (PADDING)
 	};
 
+	struct FAggregatorMod {
+		void* SourceTagReqs;
+		void* TargetTagReqs;
+
+		float EvaluatedMagnitude;
+		float StackCount;
+		FActiveGameplayEffectHandle ActiveHandle;
+		bool isPredicted;
+	};
+
+	struct FAggregatorModChannel {
+		TArray<FAggregatorMod> Mods[4];
+	};
+
+	struct FAggregatorModChannelContainer {
+	public:
+		TMap<EGameplayModEvaluationChannel, FAggregatorModChannel> ModChannelsMap;
+	};
+
+	struct FAggregator {
+	public:
+		unsigned char idaPad[0x80];
+		int32_t NetUpdateID; //0x80
+		float BaseValue; //0x84
+		FAggregatorModChannelContainer ModChannels;
+		TArray<FActiveGameplayEffectHandle> Dependents;
+		bool bIsBroadcastingDirty;
+		unsigned char pad[0x7];
+	};
+
 	/**
 	 * ScriptStruct GameplayAbilities.GameplayEffectCustomExecutionParameters
 	 * Size -> 0x00A8
@@ -888,10 +918,10 @@ namespace CG
 	struct FGameplayEffectCustomExecutionParameters
 	{
 	public:
-		TMap<FGameplayEffectAttributeCaptureDefinition, void*> ScopedModifierAggregators;
+		TMap<FGameplayEffectAttributeCaptureDefinition, FAggregator> ScopedModifierAggregators;
 		FGameplayEffectSpec* OwningSpec;
 		TWeakObjectPtr<UAbilitySystemComponent> TargetAbilitySystemComponent;
-		unsigned char                                              UnknownData_1QRB[0xA8 - sizeof(TMap<FGameplayEffectAttributeCaptureDefinition, void*>) - sizeof(FGameplayEffectSpec*) - sizeof(TWeakObjectPtr<UAbilitySystemComponent>)];                                  // 0x0000(0x00A8) MISSED OFFSET (PADDING)
+		unsigned char                                              UnknownData_1QRB[0xA8 - sizeof(TMap<FGameplayEffectAttributeCaptureDefinition, FAggregator>) - sizeof(FGameplayEffectSpec*) - sizeof(TWeakObjectPtr<UAbilitySystemComponent>)];                                  // 0x0000(0x00A8) MISSED OFFSET (PADDING)
 	};
 
 	/**

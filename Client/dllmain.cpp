@@ -323,19 +323,8 @@ void OnGameInit() {
 void FixAbilities() {
     //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
 
-    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects<UOrionAbilityTask_StartTargeting>()) {
-        if (target->GetFullName().find("Default") == std::string::npos) {
-            std::cout << target->GetFullName() << std::endl;
-
-            target->ConfirmOrCancel();
-
-
-            //target->ServerForceClientTargetData();
-            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2B8850)(target);
-            //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2A1E90)(target);
-            //2A1CE0
-        }
-    }
+    SDKUtils::ListAllObjectsOfType< UOrionCardData>();
+    SDKUtils::ListAllObjectsOfType<AOrionCard>();
 }
 
 void MainLoop() {
@@ -353,7 +342,7 @@ void MainLoop() {
 void Main() {
     CG::InitSdk();
 
-    //InitConsole();
+    InitConsole();
 
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 
@@ -362,7 +351,7 @@ void Main() {
     OnGameInit();
 
     while (true) {
-        MainLoop();
+        //MainLoop();
     }
 }
 

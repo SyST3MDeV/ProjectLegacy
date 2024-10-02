@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define IS_SERVER false
+#define IS_SERVER true
 
 extern "C" LONG __stdcall CallNtPowerInformationFake(POWER_INFORMATION_LEVEL InformationLevel, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength) {
     return CallNtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);

@@ -98,7 +98,7 @@ namespace CG
 	 */
 	bool FString::IsValid() const
 	{
-		return _data != nullptr;
+		return _data != nullptr && (unsigned int)_data != 0xffffffff;
 	}
 
 	/**

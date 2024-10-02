@@ -288,8 +288,91 @@ namespace GameLogic {
 }
 
 namespace DamageCalculations {
-    float CalculateDamage() { //TODO: Actual damage calculations
-        return 100.0;
+    struct FAggregatorEvaluateParameters
+    {
+        FAggregatorEvaluateParameters()
+            : SourceTags(nullptr)
+            , TargetTags(nullptr)
+            , IncludePredictiveMods(false)
+        {}
+
+        const FGameplayTagContainer* SourceTags;
+        const FGameplayTagContainer* TargetTags;
+
+        /** Any mods with one of these handles will be ignored during evaluation */
+        TArray<FActiveGameplayEffectHandle> IgnoreHandles;
+
+        /** If any tags are specified in the filter, a mod's owning active gameplay effect's source tags must match ALL of them in order for the mod to count during evaluation */
+        FGameplayTagContainer AppliedSourceTagFilter;
+
+        /** If any tags are specified in the filter, a mod's owning active gameplay effect's target tags must match ALL of them in order for the mod to count during evaluation */
+        FGameplayTagContainer AppliedTargetTagFilter;
+
+        bool IncludePredictiveMods;
+    };
+
+    __int64 GetDamageStatics() {
+        return (reinterpret_cast<__int64 (*)()>(Globals::ModuleBase + 0x3E6C60)());
+    }
+
+    float GetDamageCalcInput(__int64 offset, FGameplayEffectCustomExecutionParameters* params) {
+        float out = 0.0f;
+        FAggregatorEvaluateParameters secondParams = FAggregatorEvaluateParameters();
+        bool calcSucceeded = reinterpret_cast<bool(*)(FGameplayEffectCustomExecutionParameters*, FGameplayEffectAttributeCaptureDefinition*, FAggregatorEvaluateParameters*, float*)>(Globals::ModuleBase + 0x299C2F0)(params, (FGameplayEffectAttributeCaptureDefinition*)(GetDamageStatics() + offset), &secondParams, &out);
+        return out;
+    }
+
+    float CalculateDamage(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) { //TODO: Actual damage calculations
+        if (params->ExecutionParams.ScopedModifierAggregators.Data.Count() > 0) {
+            float total = 0.0f;
+            /*
+            for (int i = 0; i < params->ExecutionParams.ScopedModifierAggregators.Data.Count(); i++) {
+                float out = 0.0f;
+                FAggregatorEvaluateParameters secondParams = FAggregatorEvaluateParameters();
+                bool calcSucceeded = reinterpret_cast<bool(*)(FGameplayEffectCustomExecutionParameters*, FGameplayEffectAttributeCaptureDefinition*, FAggregatorEvaluateParameters*, float*)>(Globals::ModuleBase + 0x299C2F0)(&(params->ExecutionParams), &(params->ExecutionParams.ScopedModifierAggregators.Data.Data()[i].Value.First), &secondParams, &out);
+                if (calcSucceeded) {
+                    std::cout << "CALC SUCCEEDED!!!!" << std::endl;
+                    std::cout << out << std::endl;
+                    total += out;
+                }
+                else {
+                    std::cout << "CALC FAILED :(" << std::endl;
+                }
+            }
+            */
+
+            //0x68
+            
+            float BasePower = GetDamageCalcInput(0x38, &params->ExecutionParams);
+
+            float AttackRating = GetDamageCalcInput(0x68, &params->ExecutionParams);
+
+            float AoERating = GetDamageCalcInput(0x2D8, &params->ExecutionParams);
+
+            total = BasePower + AttackRating + AoERating;
+
+            //299FC40
+
+            /*
+            FOR TOMORROW ME
+            Look at the other Execute_Implementation methods for reference
+            Look at Damage()
+            Look at doing a calc on Damage liek the one above
+            */
+
+            /*
+            reinterpret_cast<bool(*)(FGameplayEffectSpec*)>(Globals::ModuleBase + 0x299FC40)(params->ExecutionParams.OwningSpec);
+
+            for (int i = 0; i < params->ExecutionParams.OwningSpec->Modifiers.Count(); i++) {
+                total += reinterpret_cast<float(*)(FGameplayEffectSpec*, int, bool)>(Globals::ModuleBase + 0x29AC6E0)(params->ExecutionParams.OwningSpec, i, true);
+            }
+            */
+
+            //std::cout << "TOTAL: " << total << std::endl;
+            return total;
+        }
+
+        return 0;
     }
 
     void ApplyDamage(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params, float damage) { //TODO: Deal damage to shield instead of health if shielded
@@ -319,7 +402,7 @@ namespace DamageCalculations {
             evaluatedData->IsValid = true;
 
             evaluatedData->Handle = *(reinterpret_cast<FActiveGameplayEffectHandle*>(EngineLogic::Malloc(sizeof(FActiveGameplayEffectHandle), 0)));
-            evaluatedData->Magnitude = CalculateDamage() * -1.0;
+            evaluatedData->Magnitude = damage * -1.0;
             evaluatedData->ModifierOp = EGameplayModOp::Additive;
 
             ((UGameplayEffectExecutionCalculation_Execute_Params*)params)->OutExecutionOutput.OutputModifiers._data = evaluatedData;
@@ -371,7 +454,7 @@ namespace DamageCalculations {
     }
 
     void DoDamagePipeline(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) {
-        float damage = CalculateDamage();
+        float damage = CalculateDamage(damageObject, params);
 
         ApplyDamage(damageObject, params, damage);
 
@@ -449,7 +532,7 @@ namespace GameplayAbilities {
         FGameplayAbilitySpec* spec = reinterpret_cast<FGameplayAbilitySpec * (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + 0x2962DD0)(component, Handle);
 
         if (!spec) {
-            std::cout << "Bailed, no ability!" << std::endl;
+            //std::cout << "Bailed, no ability!" << std::endl;
             //29572C0 virtual void __cdecl UAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(struct FGameplayAbilitySpecHandle,short) __ptr64
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
             return;
@@ -474,10 +557,10 @@ namespace GameplayAbilities {
         //296E2B0 BOOL __cdecl UAbilitySystemComponent::InternalTryActivateAbility(struct FGameplayAbilitySpecHandle,struct FPredictionKey,class UGameplayAbility * __ptr64 * __ptr64,class TBaseDelegate<void,class UGameplayAbility * __ptr64> * __ptr64,struct FGameplayEventData const * __ptr64) __ptr64
 
         if (reinterpret_cast<bool (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, FPredictionKey*, UGameplayAbility**, void*, FGameplayEventData*)>(Globals::ModuleBase + 0x296E2B0)(component, Handle, &PredictionKey, &InstancedAbility, nullptr, TriggerEventData)) {
-            std::cout << "Cast succeeded!" << std::endl;
+            //std::cout << "Cast succeeded!" << std::endl;
         }
         else {
-            std::cout << "Bailed, cast failed!" << std::endl;
+            //std::cout << "Bailed, cast failed!" << std::endl;
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + 0x29572C0)(component, Handle, PredictionKey.Current);
             spec->InputPressed = false;
             
@@ -992,7 +1075,7 @@ namespace Hooking {
         }
 
         if (function == internalServerTryActiveAbilityFunctionWithEventData) {
-            std::cout << "DUMMY FUNCTION CALLED" << std::endl;
+            //std::cout << "DUMMY FUNCTION CALLED" << std::endl;
 
             UOrionAbilitySystemComponent* castObj = (UOrionAbilitySystemComponent*)object;
 
@@ -1117,6 +1200,9 @@ namespace Hooking {
                 if (!object->IsA(UOrionHeroData::StaticClass()))
                     continue;
 
+                if (object->GetFullName().find("AnimTest") != std::string::npos)
+                    continue;
+
                 if (object->GetFullName().find(info.hero) != std::string::npos)
                     heroData = reinterpret_cast<UOrionHeroData*>(object);
             }
@@ -1137,16 +1223,9 @@ namespace Hooking {
 
             std::wstring wname(info.name.begin(), info.name.end());
 
-            FString* nameString = (FString * )EngineLogic::Malloc(sizeof(FString), 0);
+            FString nameString = FString(wname.c_str());
 
-            wchar_t* wchar = (wchar_t*)EngineLogic::Malloc(sizeof(wchar_t) * wname.size(), 0);
-
-            memcpy(wchar, wname.c_str(), wname.size());
-
-            nameString->_count = wname.size();
-            nameString->_max = wname.size();
-
-            controller->SetName(*nameString);
+            controller->SetName(nameString);
 
             GameLogic::SetControllerHeroData(controller, heroData, skin);
             GameLogic::SetupHUDForController(controller);
