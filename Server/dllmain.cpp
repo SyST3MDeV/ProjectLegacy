@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW false
+#define SLOW true
 
 using namespace CG;
 
