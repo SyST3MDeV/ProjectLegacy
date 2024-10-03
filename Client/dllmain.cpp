@@ -244,6 +244,29 @@ namespace Hooking {
         return true;
     }
 
+    void* origAutobuyToggled = nullptr;
+    void AutobuyToggledHook(UOrionCardShopWidget* widget) {
+        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + 0x73E740)(widget, 1);
+    }
+
+    void* origAutobuyToggled2 = nullptr;
+    void AutobuyToggled2Hook(UOrionCardShopWidget* widget) {
+        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + 0x73E740)(widget, 0);
+    }
+
+    void* origSetControllerConfigIndex = nullptr;
+    void SetControllerConfigIndexHook(UClientSettingsRecord* settings, APlayerController* pc, int index) {
+        if (index == 0) {
+            EngineLogic::ExecuteConsoleCommand(L"gpad.ConfigIndex 0");
+        }
+        else if (index == 1) {
+            EngineLogic::ExecuteConsoleCommand(L"gpad.ConfigIndex 1");
+        }
+        else if (index == 2) {
+            EngineLogic::ExecuteConsoleCommand(L"gpad.ConfigIndex 2");
+        }
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -289,7 +312,29 @@ namespace Hooking {
 
         MH_EnableHook(isCardInDeck2);
 
-        //0x26DE70
+        void* autobuyToggled = (void*)(Globals::ModuleBase + 0x7184F0);
+
+        MH_CreateHook(autobuyToggled, reinterpret_cast<void*>(AutobuyToggledHook), &origAutobuyToggled);
+
+        MH_EnableHook(autobuyToggled);
+
+        void* autobuyToggled2 = (void*)(Globals::ModuleBase + 0x7181C0);
+
+        MH_CreateHook(autobuyToggled2, reinterpret_cast<void*>(AutobuyToggled2Hook), &origAutobuyToggled2);
+
+        MH_EnableHook(autobuyToggled2);
+
+        void* setControllerConfigIndex = (void*)(Globals::ModuleBase + 0x441B00);
+
+        MH_CreateHook(setControllerConfigIndex, reinterpret_cast<void*>(SetControllerConfigIndexHook), &origSetControllerConfigIndex);
+
+        MH_EnableHook(setControllerConfigIndex);
+
+        //441B00
+
+        //7181C0
+
+        //7184F0
     }
 }
 

@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW true
+#define SLOW false
 
 using namespace CG;
 
@@ -315,11 +315,11 @@ namespace GameLogic {
         Globals::GetLocalPlayerController<AOrionPlayerController_Game>()->ServerForceStartGame();
     }
 
-    void SetControllerHeroData(AOrionPlayerController_Game* controller, UOrionHeroData* heroData, UOrionSkinItemDefinition* skin) {
+    void SetControllerHeroData(AOrionPlayerController_Game* controller, UOrionHeroData* heroData) {
         FOrionHeroDataSpec spec = FOrionHeroDataSpec();
 
         spec.HeroData = heroData;
-        spec.Skin = skin;
+        spec.Skin = heroData->DefaultSkin;
 
         reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->ServerSetPlayerHeroDataSpec(spec);
 
@@ -1287,7 +1287,7 @@ namespace Hooking {
 
             controller->SetName(nameString);
 
-            GameLogic::SetControllerHeroData(controller, heroData, skin);
+            GameLogic::SetControllerHeroData(controller, heroData);
             GameLogic::AddAllCardsToControllersDeck(controller);
             GameLogic::SetupHUDForController(controller);
             
@@ -1597,11 +1597,11 @@ namespace Hooking {
 
         MH_EnableHook(notifyControlMessage);
 
-        void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1FDD5A0);
+        //void* unetConnectionClose = (void*)(Globals::ModuleBase + 0x1FDD5A0);
 
-        MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(CloseConnection), &origCloseConnection);
+        //MH_CreateHook(unetConnectionClose, reinterpret_cast<void*>(CloseConnection), &origCloseConnection);
 
-        MH_EnableHook(unetConnectionClose);
+        //MH_EnableHook(unetConnectionClose);
 
         void* checkAbandonMatchTimer = (void*)(Globals::ModuleBase + 0x471800);
 
