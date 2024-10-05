@@ -10,30 +10,12 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW true
+#define SLOW false
 
 using namespace CG;
 
 namespace Settings {
-    struct Player {
-        std::string key;
-        std::string name;
-        std::string heroDataName;
-        std::string skinName;
-        EOrionTeam team;
-
-        Player(std::string key, std::string name, std::string heroDataName, std::string skinName, EOrionTeam team) {
-            this->key = key;
-            this->name = name;
-            this->heroDataName = heroDataName;
-            this->skinName = skinName;
-            this->team = team;
-        }
-    };
-
     const int NUM_PLAYERS_TO_START = 10;
-    const std::string SERVER_KEY = "pg";
-    const Player PLAYER_ARRAY[] = {Player("gwog", "gwog :3", "OrionHeroData HeroData_Vamp.HeroData_Vamp", "OrionSkinItemDefinition MasterSkin_Vamp.MasterSkin_Vamp", EOrionTeam::TeamBlue), Player("notgwog", "not gwog :/", "OrionHeroData HeroData_Kurohane.HeroData_Kurohane", "OrionSkinItemDefinition MasterSkin_Kurohane.MasterSkin_Kurohane", EOrionTeam::TeamRed)};
 }
 
 namespace SDKUtils {
@@ -268,19 +250,6 @@ namespace GameLogic {
             }
         }
 
-        /*
-        ps->CardsInDeck.CardsInDeck._data = (FOrionLinkedCards*)EngineLogic::Malloc(sizeof(FOrionLinkedCards) * cards.size(), 0);
-        ps->CardsInDeck.CardsInDeck._count = cards.size();
-        ps->CardsInDeck.CardsInDeck._max = cards.size();
-
-        for (int i = 0; i < cards.size(); i++) {
-            ps->CardsInDeck.CardsInDeck[i] = FOrionLinkedCards();
-            ps->CardsInDeck.CardsInDeck[i].RootCard = *cards[i];
-            ps->CardsInDeck.CardsInDeck[i].RootStackCount = 1;
-            ps->CardsInDeck.CardsInDeck[i].RootTotalCount = 1;
-        }
-        */
-
         std::vector<FOrionCardInstance*> cards2 = std::vector<FOrionCardInstance*>();
 
         for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
@@ -385,23 +354,6 @@ namespace DamageCalculations {
     float CalculateDamage(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) { //TODO: Actual damage calculations
         if (params->ExecutionParams.ScopedModifierAggregators.Data.Count() > 0) {
             float total = 0.0f;
-            /*
-            for (int i = 0; i < params->ExecutionParams.ScopedModifierAggregators.Data.Count(); i++) {
-                float out = 0.0f;
-                FAggregatorEvaluateParameters secondParams = FAggregatorEvaluateParameters();
-                bool calcSucceeded = reinterpret_cast<bool(*)(FGameplayEffectCustomExecutionParameters*, FGameplayEffectAttributeCaptureDefinition*, FAggregatorEvaluateParameters*, float*)>(Globals::ModuleBase + 0x299C2F0)(&(params->ExecutionParams), &(params->ExecutionParams.ScopedModifierAggregators.Data.Data()[i].Value.First), &secondParams, &out);
-                if (calcSucceeded) {
-                    std::cout << "CALC SUCCEEDED!!!!" << std::endl;
-                    std::cout << out << std::endl;
-                    total += out;
-                }
-                else {
-                    std::cout << "CALC FAILED :(" << std::endl;
-                }
-            }
-            */
-
-            //0x68
             
             float BasePower = GetDamageCalcInput(0x38, &params->ExecutionParams);
 
@@ -411,24 +363,6 @@ namespace DamageCalculations {
 
             total = BasePower + AttackRating + AoERating;
 
-            //299FC40
-
-            /*
-            FOR TOMORROW ME
-            Look at the other Execute_Implementation methods for reference
-            Look at Damage()
-            Look at doing a calc on Damage liek the one above
-            */
-
-            /*
-            reinterpret_cast<bool(*)(FGameplayEffectSpec*)>(Globals::ModuleBase + 0x299FC40)(params->ExecutionParams.OwningSpec);
-
-            for (int i = 0; i < params->ExecutionParams.OwningSpec->Modifiers.Count(); i++) {
-                total += reinterpret_cast<float(*)(FGameplayEffectSpec*, int, bool)>(Globals::ModuleBase + 0x29AC6E0)(params->ExecutionParams.OwningSpec, i, true);
-            }
-            */
-
-            //std::cout << "TOTAL: " << total << std::endl;
             return total;
         }
 
@@ -479,38 +413,41 @@ namespace DamageCalculations {
             reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(damage, nullptr);
         }
 
-        /*
-        static UOrionGameplayCueManager* manager = nullptr;
-
-        if (!manager) {
-            manager = SDKUtils::GetLastOfType<UOrionGameplayCueManager>();
-        }
-        */
-
-        FGameplayTag tag = FGameplayTag();
+        UGameplayCueNotify_Static* gc = nullptr;
         FGameplayCueParameters cueParams = FGameplayCueParameters();
 
         cueParams.NormalizedMagnitude = damage;
         cueParams.RawMagnitude = damage;
         cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
 
-        if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
-            tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
-        }
+        //if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
+            static UGameplayCueNotify_Static* heroDamage = nullptr;
+
+            //if (!heroDamage)
+                //heroDamage = UObject::FindObject<UGameplayEffect>("Standard_Damage_Basic_C Standard_Damage_Basic.Default__Standard_Damage_Basic_C");
+
+            //gc = heroDamage;
+            //tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
+        //}
+        /*
         else {
-            tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+            static UGameplayCueNotify_Static* genericDamage = nullptr;
+
+            if (!genericDamage)
+                genericDamage = UObject::FindObject<UGameplayCueNotify_Static>("GC_Damage_Hero_C GC_Damage_Hero.Default__GC_Damage_Hero_C");
+
+            gc = genericDamage;
+            //tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+        }
+        */
+
+        static UOrionGameplayCueManager* gameplayCueManager = nullptr;
+
+        if (!gameplayCueManager) {
+            gameplayCueManager = SDKUtils::GetLastOfType< UOrionGameplayCueManager>();
         }
 
-        UGameplayCueNotify_Static* staticThingy = SDKUtils::GetLastOfType<UGameplayCueNotify_Static>();
-
-        staticThingy->GameplayCueName = tag.TagName;
-        staticThingy->GameplayCueTag = tag;
-
-        staticThingy->K2_HandleGameplayCue(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, EGameplayCueEvent::Executed, cueParams);
-
-        //reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->K2_ExecuteGameplayCue(tag, cueParams);
-
-        //reinterpret_cast<void (*) (UOrionGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters)>(Globals::ModuleBase + 0x4C7F70)(manager, ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, tag, EGameplayCueEvent::Executed, cueParams);
+        gc->K2_HandleGameplayCue(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, EGameplayCueEvent::Executed, cueParams);
     }
 
     void DoDamagePipeline(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) {
@@ -518,7 +455,7 @@ namespace DamageCalculations {
 
         ApplyDamage(damageObject, params, damage);
 
-        ProcDamageSFX(params, damage);
+        //ProcDamageSFX(params, damage);
     }
 }
 
@@ -1528,6 +1465,11 @@ namespace Hooking {
         return true;
     }
 
+    void* origFillAccountLevelData = nullptr;
+    void FillAccountDataHook(UPostGameContext* a1) {
+
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1684,6 +1626,14 @@ namespace Hooking {
         MH_CreateHook(isCardInDeck2, reinterpret_cast<void*>(IsCardInDeck2Hook), &origIsCardInDeck2);
 
         MH_EnableHook(isCardInDeck2);
+
+        void* fillAccountData = (void*)(Globals::ModuleBase + 0x2B82C70);
+
+        MH_CreateHook(fillAccountData, reinterpret_cast<void*>(FillAccountDataHook), &origFillAccountLevelData);
+
+        MH_EnableHook(fillAccountData);
+
+        //2B82C70
 
         //4B8060
     }

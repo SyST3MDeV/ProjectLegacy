@@ -267,6 +267,11 @@ namespace Hooking {
         }
     }
 
+    void* origFillAccountLevelData = nullptr;
+    void FillAccountDataHook(UPostGameContext* a1) {
+
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -330,6 +335,12 @@ namespace Hooking {
 
         MH_EnableHook(setControllerConfigIndex);
 
+        void* fillAccountData = (void*)(Globals::ModuleBase + 0x2B82C70);
+
+        MH_CreateHook(fillAccountData, reinterpret_cast<void*>(FillAccountDataHook), &origFillAccountLevelData);
+
+        MH_EnableHook(fillAccountData);
+
         //441B00
 
         //7181C0
@@ -390,8 +401,7 @@ void OnGameInit() {
 void FixAbilities() {
     //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
 
-    SDKUtils::ListAllObjectsOfType< UOrionCardData>();
-    SDKUtils::ListAllObjectsOfType<AOrionCard>();
+    SDKUtils::ListAllObjectsOfType< UGameplayEffect>();
 }
 
 void MainLoop() {
