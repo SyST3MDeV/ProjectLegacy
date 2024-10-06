@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW true
+#define SLOW false
 
 using namespace CG;
 
@@ -1413,7 +1413,8 @@ namespace Hooking {
     }
 
     void* origNewObjectStartTargeting = nullptr;
-    UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(__int64 a1, __int64 a2) {
+    UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(UObject* obj, FName* name, EGameplayTargetingConfirmation targetingType, int32_t idk) { //__int64 a1, __int64 a2
+        /*
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(__int64, __int64)>(origNewObjectStartTargeting)(a1, a2);
 
         if ((target->Ability && target->Ability->GetFullName().find("Primary") != std::string::npos) && target->AbilitySystemComponent && target->AbilitySystemComponent->OwnerActor && target->AbilitySystemComponent->OwnerActor->IsA(AOrionPlayerState_Game::StaticClass())) {
@@ -1422,6 +1423,20 @@ namespace Hooking {
         }
         else {
             GameplayAbilities::targetingTasks.push_back(target);
+        }
+        */
+
+        //UOrionAbilityTask_StartTargeting* STATIC_StartTargeting(class UObject* WorldContextObject, const class FName& TaskInstanceName, EGameplayTargetingConfirmation ConfirmationType, int32_t Index);
+
+        UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
+
+        if (target) {
+            if (targetingType == EGameplayTargetingConfirmation::Instant) {
+                GameplayAbilities::instantConfirmTasks.push_back(target);
+            }
+            else {
+                GameplayAbilities::targetingTasks.push_back(target);
+            }
         }
 
         return target;
@@ -1604,7 +1619,7 @@ namespace Hooking {
 
         MH_EnableHook(demoTickFlush);
 
-        void* startTargeting = (void*)(Globals::ModuleBase + 0x028B5D0);
+        void* startTargeting = (void*)(Globals::ModuleBase + 0x2BAD40);
 
         MH_CreateHook(startTargeting, reinterpret_cast<void*>(NewObjectStartTargetingHook), &origNewObjectStartTargeting);
 
