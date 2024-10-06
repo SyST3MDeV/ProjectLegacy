@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define SLOW false
+#define SLOW true
 
 using namespace CG;
 
@@ -461,6 +461,7 @@ namespace DamageCalculations {
 
 namespace GameplayAbilities {
     static std::vector<UOrionAbilityTask_StartTargeting*> targetingTasks = std::vector<UOrionAbilityTask_StartTargeting*>();
+    static std::vector<UOrionAbilityTask_StartTargeting*> instantConfirmTasks = std::vector<UOrionAbilityTask_StartTargeting*>();
 
     struct AbilityProcInfo {
         UOrionAbilitySystemComponent* asc;
@@ -1343,6 +1344,11 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
+        while (GameplayAbilities::instantConfirmTasks.size() > 0) {
+            GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
+            GameplayAbilities::instantConfirmTasks.pop_back();
+        }
+
         /*
         for (int i = 0; i < GameplayAbilities::abilitiesToProc.size(); i++) {
             GameplayAbilities::AbilityProcInfo info = GameplayAbilities::abilitiesToProc.back();
@@ -1410,8 +1416,9 @@ namespace Hooking {
     UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(__int64 a1, __int64 a2) {
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(__int64, __int64)>(origNewObjectStartTargeting)(a1, a2);
 
-        if (target->GetFullName().find("Primary") != std::string::npos && target->AbilitySystemComponent && target->AbilitySystemComponent->OwnerActor && target->AbilitySystemComponent->OwnerActor->IsA(AOrionPlayerState_Game::StaticClass())) {
-            target->ConfirmOrWait();
+        if ((target->Ability && target->Ability->GetFullName().find("Primary") != std::string::npos) && target->AbilitySystemComponent && target->AbilitySystemComponent->OwnerActor && target->AbilitySystemComponent->OwnerActor->IsA(AOrionPlayerState_Game::StaticClass())) {
+            GameplayAbilities::targetingTasks.push_back(target);
+            GameplayAbilities::instantConfirmTasks.push_back(target);
         }
         else {
             GameplayAbilities::targetingTasks.push_back(target);
@@ -1661,7 +1668,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
 #if SLOW
     Sleep(100 * 1000);
