@@ -1,3 +1,5 @@
+#include "dllmain.h"
+
 #include "SDK.h"
 #include "UnrealContainers.h"
 
@@ -40,6 +42,8 @@ namespace SDKUtils {
 }
 
 namespace Globals {
+    bool gameInit = false;
+
     static bool shouldStartMatch = false;
 
     uintptr_t ModuleBase = 0;
@@ -1499,6 +1503,31 @@ namespace Hooking {
 
     }
 
+    void* origReturnToMainMenuToString = nullptr;
+    __int64 ReturnToMainMenuToString(__int64 a1, char a2) {
+        static bool gameInit = false;
+
+        if (a2 == 32 && !gameInit) {
+            gameInit = true;
+            OnGameInit();
+        }
+
+        return reinterpret_cast<__int64(*)(__int64, char)>(origReturnToMainMenuToString)(a1, a2);
+    }
+
+    void* origSetEndSequence = nullptr;
+    //void __fastcall AOrionGameState_MOBA::SetEndMatchSequence(AOrionGameState_MOBA *this, struct ULevelSequencePlayer *a2)
+    void SetEndSequenceHook(AOrionGameState_MOBA* a1, ULevelSequencePlayer* a2) {
+        static bool matchInit = false;
+
+        if (!matchInit) {
+            matchInit = true;
+            ProcInGameThread(OnMatchInit);
+        }
+
+        return reinterpret_cast<void(*)(AOrionGameState_MOBA*, ULevelSequencePlayer*)>(origSetEndSequence)(a1, a2);
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1662,9 +1691,19 @@ namespace Hooking {
 
         MH_EnableHook(fillAccountData);
 
-        //2B82C70
+        void* returnToMainMenuToString = (void*)(Globals::ModuleBase + 0x6524B0);
 
-        //4B8060
+        MH_CreateHook(returnToMainMenuToString, reinterpret_cast<void*>(ReturnToMainMenuToString), &origReturnToMainMenuToString);
+
+        MH_EnableHook(returnToMainMenuToString);
+
+        void* setMatchEndSequence = (void*)(Globals::ModuleBase + 0x498FF0);
+
+        MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(SetEndSequenceHook), &origSetEndSequence);
+
+        MH_EnableHook(setMatchEndSequence);
+
+        //498FF0
     }
 }
 
@@ -1692,6 +1731,7 @@ void OnGameInit() {
     std::cout << "Loading map..." << std::endl;
     EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
+    /*
 #if SLOW
     Sleep(100 * 1000);
 #else
@@ -1699,6 +1739,7 @@ void OnGameInit() {
 #endif
 
     Hooking::ProcInGameThread(OnMatchInit);
+    */
 }
 
 void ForceStartMatch() {
@@ -1715,12 +1756,7 @@ void Main() {
 
     Hooking::InitHooking();
 
-#if SLOW
-    Sleep(60 * 1000);
-#else
-    Sleep(30 * 1000);
-#endif
-    OnGameInit();
+    //OnGameInit();
 
     Sleep(1 * 1000 * 1000 * 1000);
 
