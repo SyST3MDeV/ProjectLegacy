@@ -833,6 +833,8 @@ namespace Networking {
         }
     }
 
+    static std::vector<AActor*> actorsToDelete = std::vector<AActor*>();
+
     int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<FActorPriority> PriorityActors, int& OutUpdated) {
         if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //IsNetReady;
             return 0;
@@ -847,6 +849,11 @@ namespace Networking {
 
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].ActorInfo->actor;
+
+                FVector loc = Connection->ViewTarget->K2_GetActorLocation();
+
+                if (Connection->ViewTarget ? !reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) : false)
+                    continue;
 
                 if (Actor->IsA(APlayerController::StaticClass()) && Actor != Connection->PlayerController) {
                     continue;
@@ -1431,7 +1438,7 @@ namespace Hooking {
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
 
         if (target) {
-            if (targetingType == EGameplayTargetingConfirmation::Instant) {
+            if (target->Ability && target->Ability->GetFullName().find("Primary") != std::string::npos) {
                 GameplayAbilities::instantConfirmTasks.push_back(target);
             }
             else {
@@ -1683,7 +1690,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
 #if SLOW
     Sleep(100 * 1000);

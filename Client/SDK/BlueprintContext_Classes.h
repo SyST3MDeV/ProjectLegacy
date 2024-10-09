@@ -481,7 +481,7 @@ namespace CG
 		EOrionTeam GetEnemyTeam();
 		float GetDamageIndicatorRotation(const struct FVector& PlayerLocation, const struct FVector& InstigatorLocation);
 		struct FOrionCoreInfo GetCoreInfo(EOrionTeam TeamNum);
-		TArray<class UOrionCardData*> GetCardDataInPlayerHand();
+		//TArray<class *> GetCardDataInPlayerHand();
 		bool GetAllowCardMenu();
 		void FlushPressedActionBindingKeys(const class FName& ActionBindingName);
 		void FadeHUDOut(float FadeInTime);
