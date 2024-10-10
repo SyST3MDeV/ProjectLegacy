@@ -412,9 +412,11 @@ namespace DamageCalculations {
     }
 
     void ProcDamageSFX(UGameplayEffectExecutionCalculation_Execute_Params* params, float damage) {
+        /*
         if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionDamageableActor::StaticClass())) {
             reinterpret_cast<AOrionDamageableActor*>(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor)->OnDamageTaken(damage, nullptr);
         }
+        */
 
         UGameplayCueNotify_Static* gc = nullptr;
         FGameplayCueParameters cueParams = FGameplayCueParameters();
@@ -423,8 +425,30 @@ namespace DamageCalculations {
         cueParams.RawMagnitude = damage;
         cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
 
+        UOrionAbilitySystemComponent* instigatorASC = reinterpret_cast<UOrionAbilitySystemComponent * (*)(FGameplayEffectContextHandle*)>(Globals::ModuleBase + 0x265A00)(&params->ExecutionParams.OwningSpec->EffectContext);
+
+        FGameplayTag tag = FGameplayTag();
+
+        if (instigatorASC) {
+            if (instigatorASC->IsA(AOrionCharHero::StaticClass())) {
+                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
+            }
+            else {
+                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+            }
+        }
+
+        FPredictionKey key = FPredictionKey();
+
+        key.Base = -69;
+        key.Current = -69;
+
+        //std::cout << "Proccing damage SFX" << std::endl;
+
+        params->ExecutionParams.TargetAbilitySystemComponent.Get()->NetMulticast_InvokeGameplayCueExecuted_WithParams(tag, key, cueParams);
+
         //if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
-            static UGameplayCueNotify_Static* heroDamage = nullptr;
+            //static UGameplayCueNotify_Static* heroDamage = nullptr;
 
             //if (!heroDamage)
                 //heroDamage = UObject::FindObject<UGameplayEffect>("Standard_Damage_Basic_C Standard_Damage_Basic.Default__Standard_Damage_Basic_C");
@@ -444,6 +468,7 @@ namespace DamageCalculations {
         }
         */
 
+            /*
         static UOrionGameplayCueManager* gameplayCueManager = nullptr;
 
         if (!gameplayCueManager) {
@@ -451,6 +476,7 @@ namespace DamageCalculations {
         }
 
         gc->K2_HandleGameplayCue(params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor, EGameplayCueEvent::Executed, cueParams);
+        */
     }
 
     void DoDamagePipeline(UOrionDamage* damageObject, UGameplayEffectExecutionCalculation_Execute_Params* params) {
@@ -458,7 +484,7 @@ namespace DamageCalculations {
 
         ApplyDamage(damageObject, params, damage);
 
-        //ProcDamageSFX(params, damage);
+        ProcDamageSFX(params, damage);
     }
 }
 
@@ -853,10 +879,12 @@ namespace Networking {
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].actor;
 
-                FVector loc = Connection->ViewTarget->K2_GetActorLocation();
+                if (Connection->ViewTarget) {
+                    FVector loc = Connection->ViewTarget->K2_GetActorLocation();
 
-                if (Connection->ViewTarget ? !reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) : false)
-                    continue;
+                    if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc))
+                        continue;
+                }
 
                 static UClass* gamePC = nullptr;
 

@@ -172,9 +172,29 @@ namespace Hooking {
             procingCurrentFuncPtrs = false;
         }
 
+        static UFunction* gameplayCueFunc = nullptr;
+
+        if(!gameplayCueFunc)
+            gameplayCueFunc = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.NetMulticast_InvokeGameplayCueExecuted_WithParams");
+
         //if (object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) {
             //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
         //}
+
+        if (function == gameplayCueFunc) {
+            //std::cout << "Recv'd function" << std::endl;
+
+            UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params* castParams = reinterpret_cast<UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params*>(params);
+
+            static UGameplayCueManager* gcManager = nullptr;
+
+            if (!gcManager)
+                gcManager = SDKUtils::GetLastOfType<UGameplayCueManager>();
+
+            AActor* targetActor = ((UOrionAbilitySystemComponent*)object)->AvatarActor;
+
+            reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, castParams->GameplayCueTag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+        }
 
         if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) {
             if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->IsA(AOrionPlayerState_Game::StaticClass())) {
