@@ -35,7 +35,7 @@ void LoadLibraryThread() {
 
     MH_EnableHook(initRHI);
 
-    Sleep(160 * 1000);
+    Sleep(30 * 1000);
 
     LoadLibraryA("Server.dll");
 #else

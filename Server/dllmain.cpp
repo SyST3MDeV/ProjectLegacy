@@ -9,10 +9,9 @@
 #include <algorithm>
 
 #include "MinHook/include/MinHook.h"
+#include <execution>
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
-
-#define SLOW false
 
 using namespace CG;
 
@@ -780,6 +779,7 @@ namespace Networking {
 
     static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
 
+    /*
     void ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList, std::vector<FActorPriority>& OutPriorityList, std::vector<FActorPriority>& OutPriorityActors) {
         static int NetTag = 0;
 
@@ -811,15 +811,6 @@ namespace Networking {
                     break;
                 }
                 
-                /*
-                for (int i = 0; i < connection->OpenChannels.Count(); i++) {
-                    if (connection->OpenChannels[i]->Class == UActorChannel::StaticClass() && ((UActorChannel*)(connection->OpenChannels[i]))->Actor == Actor) {
-                        Channel = (UActorChannel*)(connection->OpenChannels[i]);
-                        break;
-                    }
-                }
-                */
-                
 
                 if (Actor->NetTag != NetTag) {
                     Actor->NetTag = NetTag;
@@ -836,10 +827,16 @@ namespace Networking {
             }
         }
     }
+    */
+
+    struct ActorInfo {
+        AActor* actor;
+        UActorChannel* channel;
+    };
 
     static std::vector<AActor*> actorsToDelete = std::vector<AActor*>();
 
-    int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<FActorPriority> PriorityActors, int& OutUpdated) {
+    int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<ActorInfo> PriorityActors, int& OutUpdated) {
         if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //IsNetReady;
             return 0;
         }
@@ -848,18 +845,25 @@ namespace Networking {
         int ActorUpdatesThisConnectionSent = 0;
         int FinalRelevantCount = 0;
 
+        bool pcFound = false;
+
         for (int j = 0; j < PriorityActors.size(); j++) {
-            UActorChannel* Channel = PriorityActors[j].Channel;
+            UActorChannel* Channel = PriorityActors[j].channel;
 
             if (!Channel || Channel->Actor) {
-                AActor* Actor = PriorityActors[j].ActorInfo->actor;
+                AActor* Actor = PriorityActors[j].actor;
 
                 FVector loc = Connection->ViewTarget->K2_GetActorLocation();
 
                 if (Connection->ViewTarget ? !reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) : false)
                     continue;
 
-                if (Actor->IsA(APlayerController::StaticClass()) && Actor != Connection->PlayerController) {
+                static UClass* gamePC = nullptr;
+
+                if (!gamePC)
+                    gamePC = AOrionPlayerController_Game::StaticClass();
+
+                if (Actor != Connection->PlayerController && Actor->Class == gamePC) {
                     continue;
                 }
                 
@@ -882,12 +886,14 @@ namespace Networking {
                             
                             ActorUpdatesThisConnectionSent++;
 
+                            /*
                             const float MinOptimalDelta = 1.0f / Actor->NetUpdateFrequency;
                             const float MaxOptimalDelta = std::fmaxf(1.0f / Actor->MinNetUpdateFrequency, MinOptimalDelta);
                             const float DeltaBetweenReplications = (GetWorldTimeSeconds(Globals::GetGWorld()) - PriorityActors[j].ActorInfo->LastNetReplicateTime);
 
                             PriorityActors[j].ActorInfo->OptimalNetUpdateDelta = std::clamp(DeltaBetweenReplications * 0.7f, MinOptimalDelta, MaxOptimalDelta);
                             PriorityActors[j].ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
+                            */
                         }
                         else {
                             /*
@@ -976,8 +982,47 @@ namespace Networking {
             ConsiderList.push_back(newConsider);
         }
 
+        std::vector<std::vector<ActorInfo>> actorInfos = std::vector<std::vector<ActorInfo>>();
+        
+        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
+            actorInfos.push_back(std::vector<ActorInfo>());
+        }
+
+        std::for_each(std::execution::par, GetNetDriver()->ClientConnections.begin(), GetNetDriver()->ClientConnections.end(), [&actorInfos, &ConsiderList](auto&& connection) {
+            (*GetTickCountPtr(connection))++;
+
+            for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
+                if (GetNetDriver()->ClientConnections[i] == connection) {
+                    for (FNetworkObjectInfo* objInfo : ConsiderList) {
+                        ActorInfo aInfo = ActorInfo();
+
+                        aInfo.actor = objInfo->actor;
+
+                        UActorChannel * Channel = nullptr;
+
+                        for (UActorChannel* cmpChannel : actorChannels) {
+                            if (cmpChannel->Actor != objInfo->actor)
+                                continue;
+
+                            if (cmpChannel->Connection != connection)
+                                continue;
+
+                            Channel = cmpChannel;
+                            break;
+                        }
+
+                        aInfo.channel = Channel;
+                        actorInfos[i].push_back(aInfo);
+                    }
+                    break;
+                }
+            }
+            });
+
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
+            
+            std::vector<ActorInfo> aInfos = actorInfos[i];
 
             AActor* OwningActor = Connection->OwningActor;
 
@@ -989,23 +1034,21 @@ namespace Networking {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(Connection->PlayerController);
             }
 
-            std::vector<FActorPriority> PriorityList = std::vector<FActorPriority>();
-            std::vector<FActorPriority> PriorityActors = std::vector<FActorPriority>();
+            //std::vector<FActorPriority> PriorityList = std::vector<FActorPriority>();
+            //std::vector<FActorPriority> PriorityActors = std::vector<FActorPriority>();
 
-            ServerReplicateActors_PrioritizeActors(Connection, ConsiderList, PriorityList, PriorityActors);
+            //ServerReplicateActors_PrioritizeActors(Connection, ConsiderList, PriorityList, PriorityActors);
 
             int Updated = 0;
 
-            int LastProcessedActor = ServerReplicateActors_ProcessPrioritizedActors(Connection, PriorityActors, Updated);
+            int LastProcessedActor = ServerReplicateActors_ProcessPrioritizedActors(Connection, aInfos, Updated);
 
-            for (int k = LastProcessedActor; k < PriorityActors.size(); k++) {
-                if (!PriorityActors[k].ActorInfo) {
+            for (int k = LastProcessedActor; k < aInfos.size(); k++) {
+                if (!aInfos[i].actor) {
                     continue;
                 }
 
-                AActor* Actor = PriorityActors[k].ActorInfo->actor;
-
-                UActorChannel* Channel = PriorityActors[k].Channel;
+                AActor* Actor = aInfos[i].actor;
 
                 Actor->bPendingNetUpdate = true;
             }
@@ -1504,15 +1547,15 @@ namespace Hooking {
     }
 
     void* origReturnToMainMenuToString = nullptr;
-    __int64 ReturnToMainMenuToString(__int64 a1, char a2) {
+    void ReturnToMainMenuToString(__int64 a1) {
         static bool gameInit = false;
 
-        if (a2 == 32 && !gameInit) {
+        if (!gameInit) {
             gameInit = true;
             OnGameInit();
         }
 
-        return reinterpret_cast<__int64(*)(__int64, char)>(origReturnToMainMenuToString)(a1, a2);
+        return reinterpret_cast<void(*)(__int64)>(origReturnToMainMenuToString)(a1);
     }
 
     void* origSetEndSequence = nullptr;
@@ -1691,7 +1734,7 @@ namespace Hooking {
 
         MH_EnableHook(fillAccountData);
 
-        void* returnToMainMenuToString = (void*)(Globals::ModuleBase + 0x6524B0);
+        void* returnToMainMenuToString = (void*)(Globals::ModuleBase + 0x5FEF80);
 
         MH_CreateHook(returnToMainMenuToString, reinterpret_cast<void*>(ReturnToMainMenuToString), &origReturnToMainMenuToString);
 
@@ -1702,8 +1745,6 @@ namespace Hooking {
         MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(SetEndSequenceHook), &origSetEndSequence);
 
         MH_EnableHook(setMatchEndSequence);
-
-        //498FF0
     }
 }
 
@@ -1725,7 +1766,7 @@ void OnMatchInit() {
 }
 
 void OnGameInit() {
-    std::cout << "Enabling game console..." << std::endl;
+    //std::cout << "Enabling game console..." << std::endl;
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;

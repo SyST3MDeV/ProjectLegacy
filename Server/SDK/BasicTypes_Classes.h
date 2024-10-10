@@ -49,6 +49,14 @@ namespace CG
 			return _max;
 		}
 
+		T* begin() {
+			return _data;
+		}
+
+		T* end() {
+			return (T*)((__int64)_data + (_count * sizeof(size_t)));
+		}
+
 		bool IsValidIndex(int32_t i) const
 		{
 			return i < _count;
