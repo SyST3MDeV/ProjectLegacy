@@ -424,24 +424,26 @@ namespace DamageCalculations {
         cueParams.NormalizedMagnitude = damage;
         cueParams.RawMagnitude = damage;
         cueParams.AbilityLevel = ((CG::UGameplayEffectExecutionCalculation_Execute_Params*)params)->ExecutionParams.OwningSpec->Level;
+        cueParams.EffectContext = params->ExecutionParams.OwningSpec->EffectContext;
 
         UOrionAbilitySystemComponent* instigatorASC = reinterpret_cast<UOrionAbilitySystemComponent * (*)(FGameplayEffectContextHandle*)>(Globals::ModuleBase + 0x265A00)(&params->ExecutionParams.OwningSpec->EffectContext);
 
         FGameplayTag tag = FGameplayTag();
 
-        if (instigatorASC) {
-            if (instigatorASC->IsA(AOrionCharHero::StaticClass())) {
-                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
-            }
-            else {
-                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
-            }
-        }
-
         FPredictionKey key = FPredictionKey();
 
-        key.Base = -69;
-        key.Current = -69;
+        if (instigatorASC) {
+            if (instigatorASC->AvatarActor && instigatorASC->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
+                key.Base = INT16_MAX;
+                key.Current = INT16_MAX;
+                //tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
+            }
+            else {
+                key.Base = INT16_MAX - 1;
+                key.Current = INT16_MAX - 1;
+                //tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+            }
+        }
 
         //std::cout << "Proccing damage SFX" << std::endl;
 

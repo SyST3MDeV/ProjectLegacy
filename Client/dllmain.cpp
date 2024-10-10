@@ -182,18 +182,44 @@ namespace Hooking {
         //}
 
         if (function == gameplayCueFunc) {
-            //std::cout << "Recv'd function" << std::endl;
-
             UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params* castParams = reinterpret_cast<UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params*>(params);
 
-            static UGameplayCueManager* gcManager = nullptr;
+            if (castParams->PredictionKey.Current == INT16_MAX || castParams->PredictionKey.Base == INT16_MAX) {
+                static UGameplayCueManager* gcManager = nullptr;
 
-            if (!gcManager)
-                gcManager = SDKUtils::GetLastOfType<UGameplayCueManager>();
+                if (!gcManager)
+                    gcManager = SDKUtils::GetLastOfType<UGameplayCueManager>();
 
-            AActor* targetActor = ((UOrionAbilitySystemComponent*)object)->AvatarActor;
+                AActor* targetActor = ((UOrionAbilitySystemComponent*)object)->AvatarActor;
 
-            reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, castParams->GameplayCueTag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+                FGameplayTag tag = FGameplayTag();
+
+                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+
+                castParams->GameplayCueParameters.OriginalTag = tag;
+                castParams->GameplayCueParameters.MatchedTagName = tag;
+
+                std::cout << targetActor->GetFullName() << std::endl;
+
+                reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+            }
+            else if (castParams->PredictionKey.Current == INT16_MAX - 1|| castParams->PredictionKey.Base == INT16_MAX - 1) {
+                static UGameplayCueManager* gcManager = nullptr;
+
+                if (!gcManager)
+                    gcManager = SDKUtils::GetLastOfType<UGameplayCueManager>();
+
+                AActor* targetActor = ((UOrionAbilitySystemComponent*)object)->AvatarActor;
+
+                FGameplayTag tag = FGameplayTag();
+
+                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+
+                castParams->GameplayCueParameters.OriginalTag = tag;
+                castParams->GameplayCueParameters.MatchedTagName = tag;
+
+                reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+            }
         }
 
         if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) {
