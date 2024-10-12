@@ -601,14 +601,14 @@ namespace GameplayAbilities {
 
 namespace Networking {
     void Listen() {
-        EngineLogic::LimitFramerateForServer();
+        //EngineLogic::LimitFramerateForServer();
 
         reinterpret_cast<void(__thiscall*)(UEngine*, UWorld*, FName, FName)>(Globals::ModuleBase + 0x22981c0)(Globals::GetEngine(), Globals::GetGWorld(), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"));
 
         CG::UIpNetDriver* NetDriver = SDKUtils::GetLastOfType<UIpNetDriver>();
 
-        NetDriver->MaxClientRate = 999999999;
-        NetDriver->MaxInternetClientRate = 999999999;
+        //NetDriver->MaxClientRate = 999999999;
+        //NetDriver->MaxInternetClientRate = 999999999;
 
         Globals::GetGWorld()->NetDriver = NetDriver;
 
@@ -805,7 +805,7 @@ namespace Networking {
         return (int*)((__int64)connection + 0x7F);
     }
 
-    static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
+    //static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
 
     /*
     void ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList, std::vector<FActorPriority>& OutPriorityList, std::vector<FActorPriority>& OutPriorityActors) {
@@ -857,6 +857,15 @@ namespace Networking {
     }
     */
 
+    struct ConnectionChannels {
+        UNetConnection* connection;
+        std::vector<UActorChannel*>* channels;
+    };
+
+    static std::vector<ConnectionChannels> connectionChannels = std::vector<ConnectionChannels>();
+
+    
+
     struct ActorInfo {
         AActor* actor;
         UActorChannel* channel;
@@ -905,7 +914,22 @@ namespace Networking {
                     if (Channel) {
                         reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + 0x1E12C70)(Channel, Actor); //SetChannelActor
 
-                        actorChannels.push_back(Channel);
+                        bool found = false;
+                        for (ConnectionChannels ccs : connectionChannels) {
+                            if (ccs.connection == Connection) {
+                                found = true;
+                                ccs.channels->push_back(Channel);
+                            }
+                        }
+
+                        if (!found) {
+                            connectionChannels.push_back(ConnectionChannels());
+                            connectionChannels.back().channels = new std::vector<UActorChannel*>();
+                            connectionChannels.back().channels->push_back(Channel);
+                            connectionChannels.back().connection = Connection;
+                        }
+
+                        //actorChannels.push_back(Channel);
                     }
                 }
 
@@ -1030,6 +1054,19 @@ namespace Networking {
 
                         UActorChannel * Channel = nullptr;
 
+                        for (ConnectionChannels ccs : connectionChannels) {
+                            if (ccs.connection == connection) {
+                                for (UActorChannel* ch : *ccs.channels) {
+                                    if (ch->Actor == objInfo->actor) {
+                                        Channel = ch;
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        /*
                         for (UActorChannel* cmpChannel : actorChannels) {
                             if (cmpChannel->Actor != objInfo->actor)
                                 continue;
@@ -1040,6 +1077,7 @@ namespace Networking {
                             Channel = cmpChannel;
                             break;
                         }
+                        */
 
                         aInfo.channel = Channel;
                         actorInfos[i].push_back(aInfo);
@@ -1089,7 +1127,7 @@ namespace Networking {
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
 
-    std::vector<void*> FuncPtrsToProcInGameThread = std::vector<void*>();
+    static std::vector<void*> FuncPtrsToProcInGameThread = std::vector<void*>();
 
     void ProcInGameThread(void* ptr) {
         FuncPtrsToProcInGameThread.push_back(ptr);
@@ -1187,20 +1225,6 @@ namespace Hooking {
             //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
         //}
 
-        if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
-            procingCurrentFuncPtrs = true;
-
-            while (FuncPtrsToProcInGameThread.size() > 0) {
-                void* funcPtr = FuncPtrsToProcInGameThread.back();
-
-                reinterpret_cast<void(*)()>(funcPtr)();
-
-                FuncPtrsToProcInGameThread.pop_back();
-            }
-
-            procingCurrentFuncPtrs = false;
-        }
-
         if (object->IsA(UOrionDamage::StaticClass())) {
             UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
 
@@ -1230,8 +1254,8 @@ namespace Hooking {
 
     void* origNetDriverTickFlush = nullptr;
 
-    void NetDriverTickFlushHook(float DeltaTime) {
-        reinterpret_cast<void(*)(float)>(origNetDriverTickFlush)(DeltaTime);
+    void NetDriverTickFlushHook(__int64 NetDriver, float DeltaTime) {
+        reinterpret_cast<void(*)(__int64, float)>(origNetDriverTickFlush)(NetDriver, DeltaTime);
 
         Networking::ServerReplicateActors();
     }
@@ -1422,6 +1446,21 @@ namespace Hooking {
     const int maxNumTicksWaitedToStartMatch = 100;
 
     int GameEngineTickHook(UGameEngine* gameengine, float deltatime, char a3) {
+        if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
+            procingCurrentFuncPtrs = true;
+
+            while (!FuncPtrsToProcInGameThread.empty()) {
+                void* funcPtr = FuncPtrsToProcInGameThread.back();
+
+                reinterpret_cast<void(*)()>(funcPtr)();
+
+                if(!FuncPtrsToProcInGameThread.empty())
+                    FuncPtrsToProcInGameThread.pop_back();
+            }
+
+            procingCurrentFuncPtrs = false;
+        }
+
         static bool matchStarted = false;
         if(GetAsyncKeyState(VK_F7) && !matchStarted) {
             matchStarted = true;
