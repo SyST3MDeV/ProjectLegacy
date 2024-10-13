@@ -151,7 +151,7 @@ namespace EngineLogic {
     }
 
     void LimitFramerateForServer() {
-        ExecuteConsoleCommand(L"t.maxfps 20");
+        ExecuteConsoleCommand(L"t.maxfps 30");
     }
 }
 
@@ -601,7 +601,7 @@ namespace GameplayAbilities {
 
 namespace Networking {
     void Listen() {
-        //EngineLogic::LimitFramerateForServer();
+        EngineLogic::LimitFramerateForServer();
 
         reinterpret_cast<void(__thiscall*)(UEngine*, UWorld*, FName, FName)>(Globals::ModuleBase + 0x22981c0)(Globals::GetEngine(), Globals::GetGWorld(), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"), Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameNetDriver"));
 
@@ -807,8 +807,21 @@ namespace Networking {
 
     //static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
 
-    /*
-    void ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList, std::vector<FActorPriority>& OutPriorityList, std::vector<FActorPriority>& OutPriorityActors) {
+    struct ActorInfo {
+        AActor* actor;
+        UActorChannel* channel;
+    };
+
+    struct ConnectionChannels {
+        UNetConnection* connection;
+        std::vector<UActorChannel*>* channels;
+    };
+
+    static std::vector<ConnectionChannels> connectionChannels = std::vector<ConnectionChannels>();
+
+    std::vector<ActorInfo> ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList) {
+        std::vector<ActorInfo> out = std::vector<ActorInfo>();
+
         static int NetTag = 0;
 
         NetTag++;
@@ -820,14 +833,13 @@ namespace Networking {
         const int MaxSortedActors = ConsiderList.size();
 
         if (MaxSortedActors > 0) {
-            OutPriorityList = std::vector<FActorPriority>();
-            OutPriorityActors = std::vector<FActorPriority>();
 
-            for (FNetworkObjectInfo* ActorInfo : ConsiderList) {
-                AActor* Actor = ActorInfo->actor;
+            for (FNetworkObjectInfo* actorInfo : ConsiderList) {
+                AActor* Actor = actorInfo->actor;
 
                 UActorChannel* Channel = nullptr;
 
+                /*
                 for (UActorChannel* cmpChannel : actorChannels) {
                     if (cmpChannel->Actor != Actor)
                         continue;
@@ -838,38 +850,37 @@ namespace Networking {
                     Channel = cmpChannel;
                     break;
                 }
+                */
+
+                for (ConnectionChannels ccs : connectionChannels) {
+                    if (ccs.connection == connection) {
+                        for (UActorChannel* ch : *ccs.channels) {
+                            if (ch->Actor == Actor) {
+                                Channel = ch;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
                 
 
                 if (Actor->NetTag != NetTag) {
                     Actor->NetTag = NetTag;
-
-                    FActorPriority actorPrio = FActorPriority();
-
-                    actorPrio.ActorInfo = ActorInfo;
-                    actorPrio.Channel = Channel;
-                    actorPrio.Priority = 100;
-
-                    OutPriorityList.push_back(actorPrio);
-                    OutPriorityActors.push_back(actorPrio);
                 }
+
+
+                ActorInfo newActorInfo = ActorInfo();
+
+                newActorInfo.actor = Actor;
+                newActorInfo.channel = Channel;
+
+                out.push_back(newActorInfo);
             }
         }
+
+        return out;
     }
-    */
-
-    struct ConnectionChannels {
-        UNetConnection* connection;
-        std::vector<UActorChannel*>* channels;
-    };
-
-    static std::vector<ConnectionChannels> connectionChannels = std::vector<ConnectionChannels>();
-
-    
-
-    struct ActorInfo {
-        AActor* actor;
-        UActorChannel* channel;
-    };
 
     static std::vector<AActor*> actorsToDelete = std::vector<AActor*>();
 
@@ -890,12 +901,14 @@ namespace Networking {
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].actor;
 
+                /*
                 if (Connection->ViewTarget) {
                     FVector loc = Connection->ViewTarget->K2_GetActorLocation();
 
                     if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc))
                         continue;
                 }
+                */
 
                 static UClass* gamePC = nullptr;
 
@@ -992,7 +1005,7 @@ namespace Networking {
             return;
         }
 
-        float ServerTickTime = 20.0f; //Hardcoded 20 tickrate, changeme if want higher tickrate
+        float ServerTickTime = 60.0f; //Hardcoded 60 tickrate, changeme if want higher tickrate
 
         ServerTickTime = 1.0f / ServerTickTime;
 
@@ -1036,12 +1049,13 @@ namespace Networking {
             ConsiderList.push_back(newConsider);
         }
 
-        std::vector<std::vector<ActorInfo>> actorInfos = std::vector<std::vector<ActorInfo>>();
+        //std::vector<std::vector<ActorInfo>> actorInfos = std::vector<std::vector<ActorInfo>>();
         
+        /*
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             actorInfos.push_back(std::vector<ActorInfo>());
         }
-
+        
         std::for_each(std::execution::par, GetNetDriver()->ClientConnections.begin(), GetNetDriver()->ClientConnections.end(), [&actorInfos, &ConsiderList](auto&& connection) {
             (*GetTickCountPtr(connection))++;
 
@@ -1066,19 +1080,6 @@ namespace Networking {
                             }
                         }
 
-                        /*
-                        for (UActorChannel* cmpChannel : actorChannels) {
-                            if (cmpChannel->Actor != objInfo->actor)
-                                continue;
-
-                            if (cmpChannel->Connection != connection)
-                                continue;
-
-                            Channel = cmpChannel;
-                            break;
-                        }
-                        */
-
                         aInfo.channel = Channel;
                         actorInfos[i].push_back(aInfo);
                     }
@@ -1086,11 +1087,12 @@ namespace Networking {
                 }
             }
             });
+            */
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
             
-            std::vector<ActorInfo> aInfos = actorInfos[i];
+            //actorInfos[i];
 
             AActor* OwningActor = Connection->OwningActor;
 
@@ -1105,7 +1107,9 @@ namespace Networking {
             //std::vector<FActorPriority> PriorityList = std::vector<FActorPriority>();
             //std::vector<FActorPriority> PriorityActors = std::vector<FActorPriority>();
 
-            //ServerReplicateActors_PrioritizeActors(Connection, ConsiderList, PriorityList, PriorityActors);
+            
+
+            std::vector<ActorInfo> aInfos = ServerReplicateActors_PrioritizeActors(Connection, ConsiderList);
 
             int Updated = 0;
 
