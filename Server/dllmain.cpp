@@ -209,7 +209,7 @@ namespace GameLogic {
         controller->ClientSetHUD(CG::UObject::FindClass("Class OrionGame.OrionUI_Game"));
     }
 
-    bool AddControllerToTeam(AOrionPlayerController_Game* controller, EOrionTeam team) {
+    bool AddControllerToTeam(AOrionPlayerController_Game* controller, EOrionTeam team, bool noFail = true) {
         AOrionGameState_MOBA* gameState = Globals::GetGameState<AOrionGameState_MOBA>();
 
         for (int i = 0; i < gameState->Teams.Count(); i++) {
@@ -229,6 +229,14 @@ namespace GameLogic {
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bIsSpectator = false;
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bOnlySpectator = false;
                     return true;
+                }
+                else if(noFail) {
+                    if (team == EOrionTeam::TeamRed) {
+                        AddControllerToTeam(controller, EOrionTeam::TeamBlue, false);
+                    }
+                    else {
+                        AddControllerToTeam(controller, EOrionTeam::TeamRed, false);
+                    }
                 }
             }
         }
@@ -1644,6 +1652,11 @@ namespace Hooking {
         return reinterpret_cast<void(*)(AOrionGameState_MOBA*, ULevelSequencePlayer*)>(origSetEndSequence)(a1, a2);
     }
 
+    void* origTArrayRemoveSound = nullptr;
+    bool TArrayRemoveSoundHook(__int64 a1, __int64 a2) {
+        return 1;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -1818,6 +1831,14 @@ namespace Hooking {
         MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(SetEndSequenceHook), &origSetEndSequence);
 
         MH_EnableHook(setMatchEndSequence);
+
+        void* removeSound = (void*)(Globals::ModuleBase + 0x1DE59D0);
+
+        MH_CreateHook(removeSound, reinterpret_cast<void*>(TArrayRemoveSoundHook), &origTArrayRemoveSound);
+
+        MH_EnableHook(removeSound);
+
+        //212EDC0
     }
 }
 

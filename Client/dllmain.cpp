@@ -199,9 +199,9 @@ namespace Hooking {
                 castParams->GameplayCueParameters.OriginalTag = tag;
                 castParams->GameplayCueParameters.MatchedTagName = tag;
 
-                std::cout << targetActor->GetFullName() << std::endl;
-
-                reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+                if (targetActor && gcManager) {
+                    reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+                }
             }
             else if (castParams->PredictionKey.Current == INT16_MAX - 1|| castParams->PredictionKey.Base == INT16_MAX - 1) {
                 static UGameplayCueManager* gcManager = nullptr;
@@ -217,8 +217,10 @@ namespace Hooking {
 
                 castParams->GameplayCueParameters.OriginalTag = tag;
                 castParams->GameplayCueParameters.MatchedTagName = tag;
-
-                reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+                
+                if (targetActor && gcManager) {
+                    reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
+                }
             }
         }
 
