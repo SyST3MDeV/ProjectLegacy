@@ -320,6 +320,20 @@ namespace Hooking {
 
     }
 
+    void* origCardCrashyThingy = nullptr;
+    bool CardCrashyThingyHook(UOrionAttributeView* a1,
+        UOrionAbilitySystemComponent* a2,
+        const FOrionPlayerHandArray* a3,
+        int a4,
+        const FOrionCardInstance* a5) {
+        return true;
+    }
+
+    void* origAutoOpenClicked = nullptr;
+    __int64 HandleAutoOpenClicked(UOrionCardShopWidget* a1) {
+        return 0;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -388,6 +402,22 @@ namespace Hooking {
         MH_CreateHook(fillAccountData, reinterpret_cast<void*>(FillAccountDataHook), &origFillAccountLevelData);
 
         MH_EnableHook(fillAccountData);
+
+        void* cardCrashyThingy = (void*)(Globals::ModuleBase + 0x412370);
+
+        MH_CreateHook(cardCrashyThingy, reinterpret_cast<void*>(CardCrashyThingyHook), &origCardCrashyThingy);
+
+        MH_EnableHook(cardCrashyThingy);
+
+        void* autoOpenClicked = (void*)(Globals::ModuleBase + 0x718820);
+
+        MH_CreateHook(autoOpenClicked, reinterpret_cast<void*>(HandleAutoOpenClicked), &origAutoOpenClicked);
+
+        MH_EnableHook(autoOpenClicked);
+
+        //718820
+
+        //0x412370
 
         //441B00
 

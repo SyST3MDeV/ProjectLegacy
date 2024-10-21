@@ -247,6 +247,7 @@ namespace GameLogic {
     void AddAllCardsToControllersDeck(AOrionPlayerController_Game* controller) {
         AOrionPlayerState_Game* ps = reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState);
 
+        /*
         std::vector<FOrionCardInstance*> cards = std::vector<FOrionCardInstance*>();
 
         for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
@@ -289,6 +290,11 @@ namespace GameLogic {
         }
 
         reinterpret_cast<void(*)(AOrionPlayerState_Game*)>(Globals::ModuleBase + 0x68C500)(ps);
+        */
+
+        __int64 cardArray = reinterpret_cast<__int64(*)(AOrionGameMode_MOBA*)>(Globals::ModuleBase + 0x479C60)(Globals::GetGameMode< AOrionGameMode_MOBA>());
+
+        reinterpret_cast<void(*)(AOrionPlayerState_Game*, __int64)>(Globals::ModuleBase + 0x665EE0)(ps, cardArray);
     }
 
     void StartMatch() {   
@@ -909,14 +915,12 @@ namespace Networking {
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].actor;
 
-                /*
                 if (Connection->ViewTarget) {
                     FVector loc = Connection->ViewTarget->K2_GetActorLocation();
 
-                    if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc))
+                    if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + 0x1B8B980)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) && !Actor->IsA(APawn::StaticClass()))
                         continue;
                 }
-                */
 
                 static UClass* gamePC = nullptr;
 
@@ -1013,7 +1017,7 @@ namespace Networking {
             return;
         }
 
-        float ServerTickTime = 60.0f; //Hardcoded 60 tickrate, changeme if want higher tickrate
+        float ServerTickTime = 30.0f; //Hardcoded 30 tickrate, changeme if want higher tickrate
 
         ServerTickTime = 1.0f / ServerTickTime;
 
@@ -1479,6 +1483,12 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
+        static bool listenStarted = false;
+        if (GetAsyncKeyState(VK_F8) && !listenStarted) {
+            listenStarted = true;
+            OnMatchInit();
+        }
+
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
@@ -1655,6 +1665,11 @@ namespace Hooking {
     void* origTArrayRemoveSound = nullptr;
     bool TArrayRemoveSoundHook(__int64 a1, __int64 a2) {
         return 1;
+    }
+
+    void* origCanAddCard = nullptr;
+    bool CanAddCardHook(__int64 a1, int a2, __int64 a3) {
+        return true;
     }
 
     void InitHooking() {
@@ -1838,7 +1853,13 @@ namespace Hooking {
 
         MH_EnableHook(removeSound);
 
-        //212EDC0
+        //void* canAddCard = (void*)(Globals::ModuleBase + 0x4A9180);
+
+        //MH_CreateHook(canAddCard, reinterpret_cast<void*>(CanAddCardHook), &origCanAddCard);
+
+        //MH_EnableHook(canAddCard);
+
+        //4A9180
     }
 }
 
@@ -1864,7 +1885,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
     /*
 #if SLOW
