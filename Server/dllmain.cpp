@@ -297,8 +297,29 @@ namespace GameLogic {
         reinterpret_cast<void(*)(AOrionPlayerState_Game*, __int64)>(Globals::ModuleBase + 0x665EE0)(ps, cardArray);
     }
 
+    void PostMatchStartCallback() {
+        EngineLogic::ExecuteConsoleCommand(L"forceendgame 0 1");
+        EngineLogic::ExecuteConsoleCommand(L"forceendgame 1 1");
+        EngineLogic::ExecuteConsoleCommand(L"removerespawntimeall 1");
+        EngineLogic::ExecuteConsoleCommand(L"forcespawnprimehelix");
+    }
+
+    void PostPostMatchStartCallback() {
+        SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->Health = 1.0f;
+        SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->MaxHealth = 1.0f;
+    }
+
+    void PostStartMatchDelayCallback() {
+        Sleep(10 * 1000);
+        Hooking::ProcInGameThread(PostMatchStartCallback);
+        Sleep(10 * 1000);
+        Hooking::ProcInGameThread(PostPostMatchStartCallback);
+    }
+
     void StartMatch() {   
         Globals::GetLocalPlayerController<AOrionPlayerController_Game>()->ServerForceStartGame();
+        //std::thread t(PostStartMatchDelayCallback);
+        //t.detach();
     }
 
     void SetControllerHeroData(AOrionPlayerController_Game* controller, UOrionHeroData* heroData) {
@@ -1187,6 +1208,20 @@ namespace Hooking {
         //ProcInGameThread(TriggerAbilities);
     //}
 
+    /*
+    void MakePrimeBuffLastForever() {
+        for (AOrionCarriedObjective* carriedObjective: SDKUtils::GetAllObjectsOfType< AOrionCarriedObjective>()) {
+            carriedObjective->MaxLifespanTimer.Value = 10000.0f;
+            carriedObjective->ObjectiveLifespanTimer.Value = 10000.0f;
+        }
+    }
+
+    void MakePrimeBuffLastForeverDelay() {
+        Sleep(10 * 1000);
+        Hooking::ProcInGameThread(MakePrimeBuffLastForever);
+    }
+    */
+
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
@@ -1196,11 +1231,55 @@ namespace Hooking {
 
         static UFunction* waitNotifyNameFunction = nullptr;
 
+        static UFunction* primeKilledFunction = nullptr;
+
+        static UFunction* primeDeliveredFunction = nullptr;
+
         if (!internalServerTryActiveAbilityFunction)
             internalServerTryActiveAbilityFunction = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbility");
 
         if (!internalServerTryActiveAbilityFunctionWithEventData)
             internalServerTryActiveAbilityFunctionWithEventData = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbilityWithEventData");
+
+        if(!primeKilledFunction)
+            primeKilledFunction = UObject::FindObject<UFunction>("Function BP_OrionCharAI_JungleCreep_PrimeHelix_V2.BP_OrionCharAI_JungleCreep_PrimeHelix_V2_C.OnDeath_Event_1");
+
+        if(!primeDeliveredFunction)
+            primeDeliveredFunction = UObject::FindObject<UFunction>("Function BP_PrimeHelix_v2.BP_PrimeHelix_v2_C.OnScoredObjective");
+
+        /*
+        if (function == primeDeliveredFunction) {
+            ABP_PrimeHelix_v2_C* theBuff = reinterpret_cast<ABP_PrimeHelix_v2_C*>(object);
+
+            EOrionTeam team = reinterpret_cast<AOrionPlayerController_Game*>(theBuff->Carrier->Controller)->GetTeamNum();
+
+            if (team == EOrionTeam::TeamRed) {
+                EngineLogic::ExecuteConsoleCommand(L"forcewinmatch 0");
+            }
+            else {
+                EngineLogic::ExecuteConsoleCommand(L"forcewinmatch 1");
+            }
+
+            return nullptr;
+        }
+
+        if (primeKilledFunction && function == primeKilledFunction) {
+            //32DF70
+
+            ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C* theHelix = reinterpret_cast<ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C*>(object);
+
+            FGameplayTagContainer tags1 = FGameplayTagContainer();
+            FGameplayTagContainer tags2 = FGameplayTagContainer();
+            FGameplayTagContainer tags3 = FGameplayTagContainer();
+
+            reinterpret_cast<void(*)(AOrionPickupManager*, UClass*, int, AActor*, AController*, AActor*, AActor*, int, FVector, FGameplayTagContainer*, FGameplayTagContainer*, FGameplayTagContainer*, float)>(Globals::ModuleBase + 0x5324B0)(SDKUtils::GetLastOfType<AOrionPickupManager>(), ABP_PrimeHelix_v2_C::StaticClass(), 1, theHelix, theHelix->Controller, theHelix, theHelix->CachedBestTarget, 2, theHelix->K2_GetActorLocation(), &tags1, &tags2, &tags3, 1.0f);
+
+            //std::thread t(MakePrimeBuffLastForeverDelay);
+           // t.detach();
+
+            return nullptr;
+        }
+        */
 
         if (function == internalServerTryActiveAbilityFunction) {
             UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(params);
@@ -1483,11 +1562,12 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
-        static bool listenStarted = false;
-        if (GetAsyncKeyState(VK_F8) && !listenStarted) {
-            listenStarted = true;
-            OnMatchInit();
+        /*
+        if (GetAsyncKeyState(VK_F8)) {
+            SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->Health = 1.0f;
+            SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->MaxHealth = 1.0f;
         }
+        */
 
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
@@ -1885,7 +1965,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
 
     /*
 #if SLOW

@@ -62,5 +62,11 @@
     <ClCompile Include="SDK\GameplayAbilities_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="SDK\BP_OrionCharAI_JungleCreep_PrimeHelix_V2_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\BP_PrimeHelix_v2_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
