@@ -247,51 +247,6 @@ namespace GameLogic {
     void AddAllCardsToControllersDeck(AOrionPlayerController_Game* controller) {
         AOrionPlayerState_Game* ps = reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState);
 
-        /*
-        std::vector<FOrionCardInstance*> cards = std::vector<FOrionCardInstance*>();
-
-        for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
-            if (cardData->GetFullName().find("Default") == std::string::npos) {
-                AOrionCard* cardActor = reinterpret_cast<AOrionCard * (*)(AOrionPlayerState_Game*, UOrionCardData*)>(Globals::ModuleBase + 0x4CBB00)(ps, cardData);
-                FOrionCardInstance* instance = reinterpret_cast<FOrionCardInstance*>(EngineLogic::Malloc(sizeof(FOrionCardInstance), 0));
-                instance->Actor = cardActor;
-                instance->Card = cardData;
-                instance->Category = EOrionDeckCategory::Mid;
-
-                cards.push_back(instance);
-            }
-        }
-
-        std::vector<FOrionCardInstance*> cards2 = std::vector<FOrionCardInstance*>();
-
-        for (UOrionCardData* cardData : SDKUtils::GetAllObjectsOfType<UOrionCardData>()) {
-            if (cardData->GetFullName().find("Default") == std::string::npos) {
-                AOrionCard* cardActor = reinterpret_cast<AOrionCard * (*)(AOrionPlayerState_Game*, UOrionCardData*)>(Globals::ModuleBase + 0x4CBB00)(ps, cardData);
-                if (cardActor) {
-                    FOrionCardInstance* instance = reinterpret_cast<FOrionCardInstance*>(EngineLogic::Malloc(sizeof(FOrionCardInstance), 0));
-                    instance->Actor = cardActor;
-                    instance->Card = cardData;
-                    instance->Category = EOrionDeckCategory::Mid;
-
-                    cards2.push_back(instance);
-                }
-            }
-        }
-
-        ps->OriginalCardsInDeck.CardsInDeck._data = (FOrionLinkedCards*)EngineLogic::Malloc(sizeof(FOrionLinkedCards) * cards2.size(), 0);
-        ps->OriginalCardsInDeck.CardsInDeck._count = cards.size();
-        ps->OriginalCardsInDeck.CardsInDeck._max = cards.size();
-
-        for (int i = 0; i < cards.size(); i++) {
-            ps->OriginalCardsInDeck.CardsInDeck[i] = FOrionLinkedCards();
-            ps->OriginalCardsInDeck.CardsInDeck[i].RootCard = *cards2[i];
-            ps->OriginalCardsInDeck.CardsInDeck[i].RootStackCount = 1;
-            ps->OriginalCardsInDeck.CardsInDeck[i].RootTotalCount = 1;
-        }
-
-        reinterpret_cast<void(*)(AOrionPlayerState_Game*)>(Globals::ModuleBase + 0x68C500)(ps);
-        */
-
         __int64 cardArray = reinterpret_cast<__int64(*)(AOrionGameMode_MOBA*)>(Globals::ModuleBase + 0x479C60)(Globals::GetGameMode< AOrionGameMode_MOBA>());
 
         reinterpret_cast<void(*)(AOrionPlayerState_Game*, __int64)>(Globals::ModuleBase + 0x665EE0)(ps, cardArray);
@@ -1137,9 +1092,6 @@ namespace Networking {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + 0x212FD50)(Connection->PlayerController);
             }
 
-            //std::vector<FActorPriority> PriorityList = std::vector<FActorPriority>();
-            //std::vector<FActorPriority> PriorityActors = std::vector<FActorPriority>();
-
             
 
             std::vector<ActorInfo> aInfos = ServerReplicateActors_PrioritizeActors(Connection, ConsiderList);
@@ -1192,9 +1144,6 @@ namespace Hooking {
                     alreadyProcdTasks.push_back(target);
                     procdAnAbility = true;
                     std::cout << target->GetFullName() << std::endl;
-                    //target->ServerForceClientTargetData();
-                    //UOrionAbilityTask_StartTargeting* newTarget = target->STATIC_StartTargeting(target->Ability, FName(), EGameplayTargetingConfirmation::UserConfirmed, 0);
-                    //target->CancelImpl();
                     target->ConfirmOrCancel();
                 }
             }
@@ -1297,28 +1246,7 @@ namespace Hooking {
             GameplayAbilities::abilitiesToProc.push_back(GameplayAbilities::AbilityProcInfo(castObj));
 
             TriggerAbilities(castObj);
-            
-            /*
-            for (int i = 0; i < castObj->AllReplicatedInstancedAbilities.Count(); i++) {
-                UGameplayAbility* ability = castObj->AllReplicatedInstancedAbilities[i];
-
-                for (int j = 0; j < ability->ActiveTasks.Count(); j++) {
-                    UGameplayTask* task = ability->ActiveTasks[j];
-
-                    if (task->IsA(UOrionAbilityTask_StartTargeting::StaticClass())) {
-                        UOrionAbilityTask_StartTargeting* castTask = (UOrionAbilityTask_StartTargeting*)task;
-
-                        castTask->ServerForceClientTargetData();
-                        castTask->ConfirmOrCancel();
-                    }
-                }
-            }
-            */
         }
-
-        //if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos)) {
-            //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
-        //}
 
         if (object->IsA(UOrionDamage::StaticClass())) {
             UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
@@ -1562,46 +1490,10 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
-        /*
-        if (GetAsyncKeyState(VK_F8)) {
-            SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->Health = 1.0f;
-            SDKUtils::GetLastOfType< ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C>()->HealthSet->MaxHealth = 1.0f;
-        }
-        */
-
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
         }
-
-        /*
-        for (int i = 0; i < GameplayAbilities::abilitiesToProc.size(); i++) {
-            GameplayAbilities::AbilityProcInfo info = GameplayAbilities::abilitiesToProc.back();
-            bool procd = TriggerAbilities(info.asc);
-
-            info.numTimesTicked++;
-
-            GameplayAbilities::abilitiesToProc.pop_back();
-
-            if (!(procd || info.numTimesTicked > maxNumTicksAbilitiesTriggered)) {
-                GameplayAbilities::abilitiesToProc.push_back(info);
-            }
-        }
-        */
-
-        /*
-        if (triggerAbilityFailed) {
-            numTicksAbilitiesTriggered++;
-            bool procd = TriggerAbilities();
-
-            if (numTicksAbilitiesTriggered > maxNumTicksAbilitiesTriggered) {
-                triggerAbilityFailed = false;
-            }
-        }
-        else {
-            numTicksAbilitiesTriggered = 0;
-        }
-        */
 
         if (Globals::shouldStartMatch) {
             numTicksWaitedToStartMatch++;
@@ -1639,20 +1531,6 @@ namespace Hooking {
 
     void* origNewObjectStartTargeting = nullptr;
     UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(UObject* obj, FName* name, EGameplayTargetingConfirmation targetingType, int32_t idk) { //__int64 a1, __int64 a2
-        /*
-        UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(__int64, __int64)>(origNewObjectStartTargeting)(a1, a2);
-
-        if ((target->Ability && target->Ability->GetFullName().find("Primary") != std::string::npos) && target->AbilitySystemComponent && target->AbilitySystemComponent->OwnerActor && target->AbilitySystemComponent->OwnerActor->IsA(AOrionPlayerState_Game::StaticClass())) {
-            GameplayAbilities::targetingTasks.push_back(target);
-            GameplayAbilities::instantConfirmTasks.push_back(target);
-        }
-        else {
-            GameplayAbilities::targetingTasks.push_back(target);
-        }
-        */
-
-        //UOrionAbilityTask_StartTargeting* STATIC_StartTargeting(class UObject* WorldContextObject, const class FName& TaskInstanceName, EGameplayTargetingConfirmation ConfirmationType, int32_t Index);
-
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
 
         if (target) {
@@ -1932,14 +1810,6 @@ namespace Hooking {
         MH_CreateHook(removeSound, reinterpret_cast<void*>(TArrayRemoveSoundHook), &origTArrayRemoveSound);
 
         MH_EnableHook(removeSound);
-
-        //void* canAddCard = (void*)(Globals::ModuleBase + 0x4A9180);
-
-        //MH_CreateHook(canAddCard, reinterpret_cast<void*>(CanAddCardHook), &origCanAddCard);
-
-        //MH_EnableHook(canAddCard);
-
-        //4A9180
     }
 }
 
@@ -1979,7 +1849,6 @@ void OnGameInit() {
 }
 
 void ForceStartMatch() {
-    std::cout << "fixing abilities" << std::endl;
     GameLogic::StartMatch();
 }
 
