@@ -33,6 +33,33 @@ namespace SDKUtils {
     }
 }
 
+namespace Offsets {
+#ifdef v34
+    //Core Engine Offsets
+    static const uintptr_t MALLOC = 0xDFB9F0;
+    static const uintptr_t FREE = 0xDEEA90;
+
+    //Core Game Offsets
+    static const uintptr_t SET_UI_STATE = 0x7DDBC0;
+    
+    //Card System Offsets
+    static const uintptr_t SET_AUTOBUY_CHECKBOX = 0x73E740;
+
+    //Hooking Offsets
+    static const uintptr_t PROCESSEVENT = 0xFB3420;
+    static const uintptr_t INIT_MCP_PROFILE = 0x63F780;
+    static const uintptr_t RETURN_TO_MENU = 0x6319C0;
+    static const uintptr_t IS_CARD_IN_DECK = 0x4B8060;
+    static const uintptr_t IS_CARD_IN_DECK_2 = 0x4B81B0;
+    static const uintptr_t AUTOBUY_TOGGLED = 0x7184F0;
+    static const uintptr_t AUTOBUY_TOGGLED_2 = 0x7181C0;
+    static const uintptr_t SET_CONTROLLER_CONFIG_INDEX = 0x441B00;
+    static const uintptr_t FILL_ACCOUNT_DATA = 0x2B82C70;
+    static const uintptr_t CARD_CRASH = 0x412370;
+    static const uintptr_t HANDLE_AUTO_OPEN_CLICKED = 0x718820;
+#endif
+}
+
 namespace Globals {
     uintptr_t ModuleBase = 0;
 
@@ -132,13 +159,13 @@ namespace EngineLogic {
     }
 
     void* Malloc(__int64 size, unsigned int alignment) {
-        return reinterpret_cast<void* (__thiscall*)(__int64 size, unsigned int alignment)>(Globals::ModuleBase + 0xDFB9F0)(size, alignment);
+        return reinterpret_cast<void* (__thiscall*)(__int64 size, unsigned int alignment)>(Globals::ModuleBase + Offsets::MALLOC)(size, alignment);
     }
 }
 
 namespace GameLogic {
     void SetUIState(EOrionUIState state) {
-        reinterpret_cast<void(__thiscall*)(UOrionUIManagerWidget*, EOrionUIState)>(Globals::ModuleBase + 0x7DDBC0)(reinterpret_cast<UOrionGameInstance*>(Globals::GetGWorld()->OwningGameInstance)->UIManager, state);
+        reinterpret_cast<void(__thiscall*)(UOrionUIManagerWidget*, EOrionUIState)>(Globals::ModuleBase + Offsets::SET_UI_STATE)(reinterpret_cast<UOrionGameInstance*>(Globals::GetGWorld()->OwningGameInstance)->UIManager, state);
     }
 
     void HideLoadingScreen() {
@@ -294,12 +321,12 @@ namespace Hooking {
 
     void* origAutobuyToggled = nullptr;
     void AutobuyToggledHook(UOrionCardShopWidget* widget) {
-        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + 0x73E740)(widget, 1);
+        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + Offsets::SET_AUTOBUY_CHECKBOX)(widget, 1);
     }
 
     void* origAutobuyToggled2 = nullptr;
     void AutobuyToggled2Hook(UOrionCardShopWidget* widget) {
-        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + 0x73E740)(widget, 0);
+        reinterpret_cast<void(*)(UOrionCardShopWidget*, bool)>(Globals::ModuleBase + Offsets::SET_AUTOBUY_CHECKBOX)(widget, 0);
     }
 
     void* origSetControllerConfigIndex = nullptr;
@@ -337,79 +364,67 @@ namespace Hooking {
     void InitHooking() {
         MH_Initialize();
 
-        void* ProcessEventHookLocal = (void*)(Globals::ModuleBase + 0xFB3420);
+        void* ProcessEventHookLocal = (void*)(Globals::ModuleBase + Offsets::PROCESSEVENT);
 
         MH_CreateHook(ProcessEventHookLocal, reinterpret_cast<void*>(ProcessEventHook), &origProcessEvent);
 
         MH_EnableHook(ProcessEventHookLocal);
 
-        void* initMCPProfile = (void*)(Globals::ModuleBase + 0x63F780);
+        void* initMCPProfile = (void*)(Globals::ModuleBase + Offsets::INIT_MCP_PROFILE);
 
         MH_CreateHook(initMCPProfile, reinterpret_cast<void*>(InitializeMCPProfileHook), &origInitializeMCPProfile);
 
         MH_EnableHook(initMCPProfile);
 
-        void* returnToMainMenu = (void*)(Globals::ModuleBase + 0x6319C0);
+        void* returnToMainMenu = (void*)(Globals::ModuleBase + Offsets::RETURN_TO_MENU);
 
         MH_CreateHook(returnToMainMenu, reinterpret_cast<void*>(ReturnToMainMenuHook), &origReturnToMainMenu);
 
         MH_EnableHook(returnToMainMenu);
 
-        void* isPakAllowed = (void*)(Globals::ModuleBase + 0x22B1290);
-
-        MH_CreateHook(isPakAllowed, reinterpret_cast<void*>(IsPakAllowedHook), &origIsPakAllowed);
-
-        //MH_EnableHook(isPakAllowed);
-
-        void* targetingValid = (void*)(Globals::ModuleBase + 0x26DE70);
-
-        MH_CreateHook(targetingValid, reinterpret_cast<void*>(TargetingValidHook), &origIsTargetingValid);
-
-        //MH_EnableHook(targetingValid);
-
-        void* isCardInDeck = (void*)(Globals::ModuleBase + 0x4B8060);
+        void* isCardInDeck = (void*)(Globals::ModuleBase + Offsets::IS_CARD_IN_DECK);
 
         MH_CreateHook(isCardInDeck, reinterpret_cast<void*>(IsCardInDeckHook), &origIsCardInDeck);
 
         MH_EnableHook(isCardInDeck);
 
-        void* isCardInDeck2 = (void*)(Globals::ModuleBase + 0x4B81B0);
+        void* isCardInDeck2 = (void*)(Globals::ModuleBase + Offsets::IS_CARD_IN_DECK_2);
 
         MH_CreateHook(isCardInDeck2, reinterpret_cast<void*>(IsCardInDeck2Hook), &origIsCardInDeck2);
 
         MH_EnableHook(isCardInDeck2);
 
-        void* autobuyToggled = (void*)(Globals::ModuleBase + 0x7184F0);
+        void* autobuyToggled = (void*)(Globals::ModuleBase + Offsets::AUTOBUY_TOGGLED);
 
         MH_CreateHook(autobuyToggled, reinterpret_cast<void*>(AutobuyToggledHook), &origAutobuyToggled);
 
         MH_EnableHook(autobuyToggled);
 
-        void* autobuyToggled2 = (void*)(Globals::ModuleBase + 0x7181C0);
+        void* autobuyToggled2 = (void*)(Globals::ModuleBase + Offsets::AUTOBUY_TOGGLED_2);
 
         MH_CreateHook(autobuyToggled2, reinterpret_cast<void*>(AutobuyToggled2Hook), &origAutobuyToggled2);
 
         MH_EnableHook(autobuyToggled2);
 
-        void* setControllerConfigIndex = (void*)(Globals::ModuleBase + 0x441B00);
+        void* setControllerConfigIndex = (void*)(Globals::ModuleBase + Offsets::SET_CONTROLLER_CONFIG_INDEX);
 
         MH_CreateHook(setControllerConfigIndex, reinterpret_cast<void*>(SetControllerConfigIndexHook), &origSetControllerConfigIndex);
 
         MH_EnableHook(setControllerConfigIndex);
 
-        void* fillAccountData = (void*)(Globals::ModuleBase + 0x2B82C70);
+        void* fillAccountData = (void*)(Globals::ModuleBase + Offsets::CARD_CRASH);
 
         MH_CreateHook(fillAccountData, reinterpret_cast<void*>(FillAccountDataHook), &origFillAccountLevelData);
 
         MH_EnableHook(fillAccountData);
 
-        void* cardCrashyThingy = (void*)(Globals::ModuleBase + 0x412370);
+        void* cardCrashyThingy = (void*)(Globals::ModuleBase + Offsets::CARD_CRASH);
 
         MH_CreateHook(cardCrashyThingy, reinterpret_cast<void*>(CardCrashyThingyHook), &origCardCrashyThingy);
 
         MH_EnableHook(cardCrashyThingy);
 
-        void* autoOpenClicked = (void*)(Globals::ModuleBase + 0x718820);
+        void* autoOpenClicked = (void*)(Globals::ModuleBase + Offsets::HANDLE_AUTO_OPEN_CLICKED);
 
         MH_CreateHook(autoOpenClicked, reinterpret_cast<void*>(HandleAutoOpenClicked), &origAutoOpenClicked);
 
@@ -474,24 +489,6 @@ void OnGameInit() {
     //std::cout << "Enabling game console..." << std::endl;
     //EngineLogic::EnableGameConsole();
     Hooking::ProcInGameThread(ConnectToMatch);
-}
-
-void FixAbilities() {
-    //reinterpret_cast<void(*)(UOrionAbilitySystemGlobals*)>(Globals::ModuleBase + 0x26C720)(SDKUtils::GetLastOfType< UOrionAbilitySystemGlobals>());
-
-    SDKUtils::ListAllObjectsOfType< UGameplayEffect>();
-}
-
-void MainLoop() {
-    while (!GetAsyncKeyState(VK_F7)) {
-
-    }
-
-    Hooking::ProcInGameThread(FixAbilities);
-
-    while (GetAsyncKeyState(VK_F7)) {
-
-    }
 }
 
 void Main() {
