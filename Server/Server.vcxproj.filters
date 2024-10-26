@@ -16,6 +16,9 @@
     <Filter Include="SDK">
       <UniqueIdentifier>{15313010-defd-45cf-92cc-5351f99c527e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="SDKv45">
+      <UniqueIdentifier>{e1cea0a3-4aae-4613-b8a5-4f1d5059693a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -67,6 +70,21 @@
     </ClCompile>
     <ClCompile Include="SDK\BP_PrimeHelix_v2_Package.cpp">
       <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="SDKv45\Basic.cpp">
+      <Filter>SDKv45</Filter>
+    </ClCompile>
+    <ClCompile Include="SDKv45\Engine_functions.cpp">
+      <Filter>SDKv45</Filter>
+    </ClCompile>
+    <ClCompile Include="SDKv45\GameplayAbilities_functions.cpp">
+      <Filter>SDKv45</Filter>
+    </ClCompile>
+    <ClCompile Include="SDKv45\OrionGame_functions.cpp">
+      <Filter>SDKv45</Filter>
+    </ClCompile>
+    <ClCompile Include="SDKv45\CoreUObject_functions.cpp">
+      <Filter>SDKv45</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

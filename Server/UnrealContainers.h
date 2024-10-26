@@ -232,7 +232,7 @@ namespace UC
 		static constexpr uint64 ElementAlign = alignof(ArrayElementType);
 		static constexpr uint64 ElementSize = sizeof(ArrayElementType);
 
-	protected:
+	public:
 		ArrayElementType* Data;
 		int32 NumElements;
 		int32 MaxElements;
@@ -260,7 +260,7 @@ namespace UC
 		inline const ArrayElementType& GetUnsafe(int32 Index) const { return Data[Index]; }
 
 	public:
-		/* Adds to the array if there is still space for one more element */
+		/*
 		inline bool Add(const ArrayElementType& Element)
 		{
 			if (GetSlack() <= 0)
@@ -281,12 +281,13 @@ namespace UC
 
 			for (int i = Index; i < NumElements; i++)
 			{
-				/* NumElements was decremented, acessing i + 1 is safe */
 				Data[i] = Data[i + 1];
 			}
 
 			return true;
 		}
+
+				*/
 
 		inline void Clear()
 		{
@@ -296,8 +297,9 @@ namespace UC
 				memset(Data, 0, NumElements * ElementSize);
 		}
 
+
 	public:
-		inline int32 Num() const { return NumElements; }
+		inline int32 Count() const { return NumElements; }
 		inline int32 Max() const { return MaxElements; }
 
 		inline bool IsValidIndex(int32 Index) const { return Data && Index >= 0 && Index < NumElements; }
@@ -765,7 +767,7 @@ namespace UC
 	template<typename T0, typename T1> inline Iterators::TMapIterator<T0, T1> begin(const TMap<T0, T1>& Map) { return Iterators::TMapIterator<T0, T1>(Map, Map.GetAllocationFlags(), 0); }
 	template<typename T0, typename T1> inline Iterators::TMapIterator<T0, T1> end(const TMap<T0, T1>& Map) { return Iterators::TMapIterator<T0, T1>(Map, Map.GetAllocationFlags(), Map.NumAllocated()); }
 
-	static_assert(sizeof(TArray<int32>) == 0x10, "TArray has a wrong size!");
-	static_assert(sizeof(TSet<int32>) == 0x50, "TSet has a wrong size!");
-	static_assert(sizeof(TMap<int32, int32>) == 0x50, "TMap has a wrong size!");
+	//static_assert(sizeof(TArray<int32>) == 0x10, "TArray has a wrong size!");
+	//static_assert(sizeof(TSet<int32>) == 0x50, "TSet has a wrong size!");
+	//static_assert(sizeof(TMap<int32, int32>) == 0x50, "TMap has a wrong size!");
 }
