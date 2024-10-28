@@ -4228,7 +4228,8 @@ public:
 	EOrionPlayerPlatform                          PlayerPlatform;                                    // 0x0460(0x0001)(BlueprintVisible, BlueprintReadOnly, Net, ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	uint8                                         Pad_461[0x7];                                      // 0x0461(0x0007)(Fixing Size After Last Property [ Dumper-7 ])
 	class AOrionTeamInfo*                         TeamInfo;                                          // 0x0468(0x0008)(BlueprintVisible, BlueprintReadOnly, Net, ZeroConstructor, IsPlainOldData, RepNotify, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	uint8                                         Pad_470[0x4];                                      // 0x0470(0x0004)(Fixing Size After Last Property [ Dumper-7 ])
+	EOrionTeam									  TeamNum;
+	uint8                                         Pad_470[0x3];                                      // 0x0470(0x0004)(Fixing Size After Last Property [ Dumper-7 ])
 	bool                                          bReadyToStartMatch;                                // 0x0474(0x0001)(Net, ZeroConstructor, IsPlainOldData, RepNotify, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	uint8                                         Pad_475[0x3];                                      // 0x0475(0x0003)(Fixing Size After Last Property [ Dumper-7 ])
 	struct FUniqueNetIdRepl                       PartyOwnerUniqueId;                                // 0x0478(0x0018)(Net, RepNotify, HasGetValueTypeHash, NativeAccessSpecifierPublic)

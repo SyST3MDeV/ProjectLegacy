@@ -307,8 +307,8 @@ namespace UC
 		inline bool IsValid() const { return Data && NumElements > 0 && MaxElements >= NumElements; }
 
 	public:
-		inline       ArrayElementType& operator[](int32 Index) { VerifyIndex(Index); return Data[Index]; }
-		inline const ArrayElementType& operator[](int32 Index) const { VerifyIndex(Index); return Data[Index]; }
+		inline       ArrayElementType& operator[](int32 Index) { return Data[Index]; }
+		inline const ArrayElementType& operator[](int32 Index) const { return Data[Index]; }
 
 		inline bool operator==(const TArray<ArrayElementType>& Other) const { return Data == Other.Data; }
 		inline bool operator!=(const TArray<ArrayElementType>& Other) const { return Data != Other.Data; }
