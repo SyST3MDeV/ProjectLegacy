@@ -16,9 +16,6 @@
     <Filter Include="SDK">
       <UniqueIdentifier>{e4464521-a6d6-4a2e-ad01-ed1f09ef3dab}</UniqueIdentifier>
     </Filter>
-    <Filter Include="SDKv45">
-      <UniqueIdentifier>{b3f42509-b883-41f8-8c65-56b049054c85}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -61,21 +58,6 @@
     </ClCompile>
     <ClCompile Include="jsoncpp.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SDKv45\Basic.cpp">
-      <Filter>SDKv45</Filter>
-    </ClCompile>
-    <ClCompile Include="SDKv45\CoreUObject_functions.cpp">
-      <Filter>SDKv45</Filter>
-    </ClCompile>
-    <ClCompile Include="SDKv45\Engine_functions.cpp">
-      <Filter>SDKv45</Filter>
-    </ClCompile>
-    <ClCompile Include="SDKv45\GameplayAbilities_functions.cpp">
-      <Filter>SDKv45</Filter>
-    </ClCompile>
-    <ClCompile Include="SDKv45\OrionGame_functions.cpp">
-      <Filter>SDKv45</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

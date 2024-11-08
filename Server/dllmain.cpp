@@ -88,7 +88,7 @@ namespace PLOffsets {
     static const uintptr_t IS_NET_RELEVANT = 0x1B8B980;
     static const uintptr_t CREATE_CHANNEL = 0x1FDD9E0;
     static const uintptr_t SET_CHANNEL_ACTOR = 0x1E12C70;
-    static const uintptr_t IS_NET_READY = 0x1FEBA80;
+    //static const uintptr_t IS_NET_READY = 0x1FEBA80;
     static const uintptr_t REPLICATE_ACTOR = 0x1E0C1D0;
     static const uintptr_t FORCE_NET_UPDATE = 0x1B7E250;
     static const uintptr_t IS_PENDING_KILL_PENDING = 0x2AFBB0;
@@ -159,7 +159,6 @@ namespace PLOffsets {
     static const uintptr_t FORCE_NET_UPDATE = 0x1B5FF80;
     static const uintptr_t IS_PENDING_KILL_PENDING = 0x3E9290;
     static const uintptr_t SEND_CLIENT_ADJUSTMENT = 0x21854F0;
-    static const uintptr_t IS_NET_READY_PTR_PTR = 0x4463848;
 
     //Hooking Offsets
     static const uintptr_t PROCESSEVENT = 0xEA1BD0;
@@ -170,7 +169,7 @@ namespace PLOffsets {
     static const uintptr_t NOTIFY_ACCEPTED_CONNECTION = 0x238D180;
     static const uintptr_t NOTIFY_ACCEPTING_CHANNEL = 0x238D300;
     static const uintptr_t NOTIFY_CONTROL_MESSAGE = 0x238DBD0;
-    static const uintptr_t CAN_RESTART_PLAYER = 0x8FA1F0;//0x2169440;
+    static const uintptr_t CAN_RESTART_PLAYER = 0x2169440;
     static const uintptr_t COLLECT_GARBAGE = 0xE19000;
     static const uintptr_t CONSUME_CLIENT_DATA = 0x3162420;
     static const uintptr_t GAME_ENGINE_TICK = 0x1E7F340;
@@ -180,8 +179,6 @@ namespace PLOffsets {
     static const uintptr_t NEW_OBJECT_START_TARGETING = 0x3F4C60;
     static const uintptr_t LOGIN = 0x672430;
     static const uintptr_t UCHANNEL_CLEANUP = 0x1DEA6A0;
-    static const uintptr_t GAME_MODE_CAN_RESTART_PLAYER = 0x23F82B0;
-    static const uintptr_t OBJECT_CRASH_FUNC = 0x1E2B6C0;
 #endif
 }
 
@@ -322,13 +319,7 @@ namespace EngineLogic {
     }
 
     void LimitFramerateForServer() {
-#ifdef v34
         ExecuteConsoleCommand(L"t.maxfps 30");
-#endif
-
-#ifdef v45
-        ExecuteConsoleCommand(L"t.maxfps 60");
-#endif
     }
 }
 
@@ -339,7 +330,7 @@ namespace GameLogic {
         
 
 #ifdef v34
-        gameState->Teams._data = reinterpret_cast<AOrionTeamInfo**>(EngineLogic::Malloc(sizeof(AOrionTeamInfo*) * 4, 0));
+        gameState->Teams._data = reinterpret_cast<AOrionTeamInfo**>(EngineLogic::Malloc(sizeof(AOrionTeamInfo*) * 3, 0));
         gameState->Teams._count = 4;
         gameState->Teams._max = 4;
 
@@ -363,7 +354,7 @@ namespace GameLogic {
 #endif
 
 #ifdef v45
-        gameState->Teams.Data = reinterpret_cast<AOrionTeamInfo**>(EngineLogic::Malloc(sizeof(AOrionTeamInfo*) * 4, 0));
+        gameState->Teams.Data = reinterpret_cast<AOrionTeamInfo**>(EngineLogic::Malloc(sizeof(AOrionTeamInfo*) * 3, 0));
         gameState->Teams.NumElements = 4;
         gameState->Teams.MaxElements = 4;
 
@@ -441,11 +432,6 @@ namespace GameLogic {
 
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bIsSpectator = false;
                     reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bOnlySpectator = false;
-
-#ifdef v45
-                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->TeamNum = team;
-#endif
-
                     return true;
                 }
                 else if(noFail) {
@@ -971,8 +957,7 @@ namespace Networking {
 
             AActor* OwningActor = Connection->OwningActor;
 
-#ifdef v34
-            if (OwningActor != nullptr && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f) && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open) { //
+            if (OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f)) {
                 bFoundReadyConnection = true;
 
                 Connection->ViewTarget = Connection->PlayerController ? Connection->PlayerController->GetViewTarget() : OwningActor;
@@ -980,18 +965,6 @@ namespace Networking {
             else {
                 Connection->ViewTarget = nullptr;
             }
-#endif
-
-#ifdef v45
-            if (OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x12C)) == USOCK_Open) { //&& (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f)
-                bFoundReadyConnection = true;
-
-                Connection->ViewTarget = Connection->PlayerController ? Connection->PlayerController->GetViewTarget() : OwningActor;
-            }
-            else {
-                Connection->ViewTarget = nullptr;
-            }
-#endif
         }
 
         return bFoundReadyConnection;
@@ -1087,13 +1060,7 @@ namespace Networking {
     };
 
     int* GetTickCountPtr(UNetConnection* connection) {
-#ifdef v34
         return (int*)((__int64)connection + 0x7F);
-#endif 
-
-#ifdef v45
-        return (int*)((__int64)connection + 0x204);
-#endif
     }
 
     //static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
@@ -1176,11 +1143,9 @@ namespace Networking {
     static std::vector<AActor*> actorsToDelete = std::vector<AActor*>();
 
     int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<ActorInfo> PriorityActors, int& OutUpdated) {
-        /*
-        if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //TODO: This is both blatantly incorrect (Offset for UChildConnection, not UNetConnection), and somehow fucked up on top of that (+0x20 of the actual function). I don't wanna touch it rn, but TODO for the netcode refactor
-            return 0;
-        }
-        */
+        //if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //TODO: This is both blatantly incorrect (Offset for UChildConnection, not UNetConnection), and somehow fucked up on top of that (+0x20 of the actual function). I don't wanna touch it rn, but TODO for the netcode refactor
+            //return 0;
+        //}
 
         int ActorUpdatesThisConnection = 0;
         int ActorUpdatesThisConnectionSent = 0;
@@ -1194,14 +1159,12 @@ namespace Networking {
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].actor;
 
-#ifdef v34
                 if (Connection->ViewTarget) {
                     FVector loc = Connection->ViewTarget->K2_GetActorLocation();
 
                     if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + PLOffsets::IS_NET_RELEVANT)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) && !Actor->IsA(APawn::StaticClass()))
                         continue;
                 }
-#endif
 
                 static UClass* gamePC = nullptr;
 
@@ -1240,13 +1203,7 @@ namespace Networking {
                 }
 
                 if (Channel && Channel->Actor) {
-#ifdef v34
-                   if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY)(Connection, 0)) { //IsNetReady
-#endif
-
-#ifdef v45
-                       if ((*reinterpret_cast<bool(**)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY_PTR_PTR))(Connection, 0)){
-#endif
+                    //if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY)(Connection, 0)) { //IsNetReady
                         if (reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + PLOffsets::REPLICATE_ACTOR)(Channel)) { //ReplicateActor
                             //std::cout << "Replicated Actor " << Actor->GetFullName() << std::endl;
                             
@@ -1278,21 +1235,12 @@ namespace Networking {
                         reinterpret_cast<void(*)(AActor*)>(Globals::ModuleBase + PLOffsets::FORCE_NET_UPDATE)(Actor); //AActor::ForceNetUpdate
                     }
 
-#ifdef v34
-                    if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY)(Connection, 0)) {
-                        std::cout << "Bailing on processing actors..." << std::endl;
-                        return j;
-                    }
-#endif
-
-#ifdef v45
-                    if (!(*reinterpret_cast<bool(**)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY_PTR_PTR))(Connection, 0)) {
-                        std::cout << "Bailing on processing actors..." << std::endl;
-                        return j;
-                    }
-#endif
+                    //if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + PLOffsets::IS_NET_READY)(Connection, 0)) {
+                        //std::cout << "Bailing on processing actors..." << std::endl;
+                        //return j;
+                    //}
                 }
-            }
+            //}
         }
     }
 
@@ -1305,13 +1253,7 @@ namespace Networking {
             return;
         }
 
-#ifdef v34
         (*(__int64*)((__int64)GetNetDriver() + 0x280))++; //Bump ReplicationFrame
-#endif
-
-#ifdef v45
-        (*(__int64*)((__int64)GetNetDriver() + 0x2D8))++; //Bump ReplicationFrame
-#endif
 
         bool shouldTick = ServerReplicateActors_PrepConnections();
 
@@ -1319,13 +1261,7 @@ namespace Networking {
             return;
         }
 
-#ifdef v34
         float ServerTickTime = 30.0f; //Hardcoded 30 tickrate, changeme if want higher tickrate
-#endif
-
-#ifdef v45
-        float ServerTickTime = 60.0f;
-#endif
 
         ServerTickTime = 1.0f / ServerTickTime;
 
@@ -1427,17 +1363,9 @@ namespace Networking {
 
             AActor* OwningActor = Connection->OwningActor;
 
-#ifdef v34
-            if (!(OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f))) { //
+            if (!(OwningActor != nullptr && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f))) { //&& (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open
                 continue;
             }
-#endif
-
-#ifdef v45
-            if (!(OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x12C)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f))) { //
-                continue;
-            }
-#endif
 
             if (Connection->PlayerController) {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + PLOffsets::SEND_CLIENT_ADJUSTMENT)(Connection->PlayerController);
@@ -1815,14 +1743,6 @@ namespace Hooking {
         return a1 != Globals::GetLocalPlayerController<AOrionPlayerController_Base>();
     }
 
-#ifdef v45
-    void* origGameModeCanRestartPlayer = nullptr;
-
-    bool GameModeCanRestartPlayer(AGameMode* a1, APlayerController* a2) {
-        return a2 != Globals::GetLocalPlayerController<AOrionPlayerController_Base>();
-    }
-#endif
-
     void* origCollectGarbage = nullptr;
 
     void CollectGarbageHook() {
@@ -2040,13 +1960,6 @@ namespace Hooking {
         return true;
     }
 
-#ifdef v45
-    void* origObjectCrash = nullptr;
-    bool ObjectCrashHook(__int64 a1) {
-        return 0;
-    }
-#endif
-
     void InitHooking() {
         MH_Initialize();
 
@@ -2233,21 +2146,6 @@ namespace Hooking {
         MH_CreateHook(uchannelCleanup, reinterpret_cast<void*>(TArrayRemoveSoundHook), &origTArrayRemoveSound);
 
         MH_EnableHook(uchannelCleanup);
-
-#ifdef v45
-        void* gameModeCanRestartPlayer = (void*)(Globals::ModuleBase + PLOffsets::GAME_MODE_CAN_RESTART_PLAYER);
-
-        MH_CreateHook(gameModeCanRestartPlayer, reinterpret_cast<void*>(GameModeCanRestartPlayer), &origGameModeCanRestartPlayer);
-
-        MH_EnableHook(gameModeCanRestartPlayer);
-
-        void* objectCrash = (void*)(Globals::ModuleBase + PLOffsets::OBJECT_CRASH_FUNC);
-        
-        MH_CreateHook(objectCrash, reinterpret_cast<void*>(ObjectCrashHook), &origObjectCrash);
-
-        //MH_EnableHook(objectCrash);
-        //
-#endif
     }
 }
 

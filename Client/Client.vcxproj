@@ -165,11 +165,6 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='v34|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='v45|Win32'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="SDKv45\Basic.cpp" />
-    <ClCompile Include="SDKv45\CoreUObject_functions.cpp" />
-    <ClCompile Include="SDKv45\Engine_functions.cpp" />
-    <ClCompile Include="SDKv45\GameplayAbilities_functions.cpp" />
-    <ClCompile Include="SDKv45\OrionGame_functions.cpp" />
     <ClCompile Include="SDK\BasicTypes_Package.cpp" />
     <ClCompile Include="SDK\CoreUObject_Package.cpp" />
     <ClCompile Include="SDK\Engine_Package.cpp" />
