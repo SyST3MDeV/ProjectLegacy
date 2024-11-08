@@ -182,11 +182,17 @@ namespace PLOffsets {
     static const uintptr_t UCHANNEL_CLEANUP = 0x1DEA6A0;
     static const uintptr_t GAME_MODE_CAN_RESTART_PLAYER = 0x23F82B0;
     static const uintptr_t OBJECT_CRASH_FUNC = 0x1E2B6C0;
+    static const uintptr_t AISYSTEM_SPAWN_BOT = 0x496DB0;
+    static const uintptr_t UWORLD_SPAWN_ACTOR = 0x1F813B0;
+    static const uintptr_t GAME_MODE_MOBA_HANDLE_WAITING_TO_START = 0x66A480;
+    static const uintptr_t HAS_TEAM_BUILDER_INFO = 0x6AF5C0;
 #endif
 }
 
 namespace Globals {
     bool gameInit = false;
+
+    bool overrideTeamBuilderInfoCheck = false;
 
     static bool shouldStartMatch = false;
 
@@ -412,8 +418,117 @@ namespace GameLogic {
         gameState->Teams[3] = teamCreepInfo;
     }
 
+    void SetupBots() {
+        AOrionGameState_MOBA* gs = Globals::GetGameState< AOrionGameState_MOBA>();
+
+        FOrionTBMemberInfo* redTeamTBMembers = reinterpret_cast<FOrionTBMemberInfo * >(EngineLogic::Malloc(sizeof(FOrionTBMemberInfo) * 5, 0));
+
+        for (int i = 0; i < 5; i++) {
+            redTeamTBMembers[i] = FOrionTBMemberInfo();
+            redTeamTBMembers[i].bValidPlayer = true;
+            redTeamTBMembers[i].bIsBot = true;
+            redTeamTBMembers[i].bFromSocialParty = false;
+            redTeamTBMembers[i].BotDifficulty = EAIBotDifficulty::Veteran;
+            redTeamTBMembers[i].UniqueId = FUniqueNetIdRepl();
+            redTeamTBMembers[i].UniqueId.Pad_0[0] = 0x1;
+            redTeamTBMembers[i].PartyLeaderId = FUniqueNetIdRepl();
+            redTeamTBMembers[i].PartyLeaderId.Pad_0[0] = 0x1;
+            redTeamTBMembers[i].PlayerData = FOrionTBPlayerChoices();
+            redTeamTBMembers[i].SlotIdx = i;
+            redTeamTBMembers[i].State = EOrionTBMemberState::Joined;
+        }
+
+        FOrionTBTeamInfo redTeamTBInfo = gs->Teams[0]->TeamBuilderInfo;
+        
+        redTeamTBInfo.Captain = redTeamTBMembers[0];
+        redTeamTBInfo.SocialPartySize = 0;
+        redTeamTBInfo.ChatRoomId = FOrionTeamChatRoomId();
+        redTeamTBInfo.Members = TArray<FOrionTBMemberInfo>();
+        redTeamTBInfo.Members.Data = redTeamTBMembers;
+        redTeamTBInfo.Members.NumElements = 5;
+        redTeamTBInfo.Members.MaxElements = 5;
+
+        FOrionTBMemberInfo* blueTeamTBMembers = reinterpret_cast<FOrionTBMemberInfo*>(EngineLogic::Malloc(sizeof(FOrionTBMemberInfo) * 4, 0));
+
+        for (int i = 0; i < 5; i++) {
+            blueTeamTBMembers[i] = FOrionTBMemberInfo();
+            blueTeamTBMembers[i].bValidPlayer = true;
+            blueTeamTBMembers[i].bIsBot = true;
+            blueTeamTBMembers[i].bFromSocialParty = false;
+            blueTeamTBMembers[i].BotDifficulty = EAIBotDifficulty::Veteran;
+            blueTeamTBMembers[i].UniqueId = FUniqueNetIdRepl();
+            blueTeamTBMembers[i].UniqueId.Pad_0[0] = 0x1;
+            blueTeamTBMembers[i].PartyLeaderId = FUniqueNetIdRepl();
+            blueTeamTBMembers[i].PartyLeaderId.Pad_0[0] = 0x1;
+            blueTeamTBMembers[i].PlayerData = FOrionTBPlayerChoices();
+            blueTeamTBMembers[i].SlotIdx = i;
+            blueTeamTBMembers[i].State = EOrionTBMemberState::Joined;
+        }
+
+        FOrionTBTeamInfo blueTeamTBInfo = gs->Teams[0]->TeamBuilderInfo;
+
+        blueTeamTBInfo.Captain = blueTeamTBMembers[0];
+        blueTeamTBInfo.SocialPartySize = 0;
+        blueTeamTBInfo.ChatRoomId = FOrionTeamChatRoomId();
+        blueTeamTBInfo.Members = TArray<FOrionTBMemberInfo>();
+        blueTeamTBInfo.Members.Data = blueTeamTBMembers;
+        blueTeamTBInfo.Members.NumElements = 4;
+        blueTeamTBInfo.Members.MaxElements = 4;
+
+        Globals::overrideTeamBuilderInfoCheck = true;
+
+        reinterpret_cast<void(*)(AOrionGameMode_MOBA*)>(Globals::ModuleBase + PLOffsets::GAME_MODE_MOBA_HANDLE_WAITING_TO_START)(Globals::GetGameMode<AOrionGameMode_MOBA>());
+    }
+
     void SetupHUDForController(AOrionPlayerController_Game* controller) {
         controller->ClientSetHUD(UObject::FindClass("Class OrionGame.OrionUI_Game"));
+    }
+
+    bool AddBotControllerToTeam(AOrionAIBot* controller, EOrionTeam team, bool noFail = true) {
+        AOrionGameState_MOBA* gameState = Globals::GetGameState<AOrionGameState_MOBA>();
+
+        for (int i = 0; i < gameState->Teams.Count(); i++) {
+            AOrionTeamInfo* teamInfo = gameState->Teams[i];
+
+            if (teamInfo->TeamIndex == team) {
+                if (teamInfo->TeamMembers.Count() < 5) {
+                    teamInfo->TeamMembers[teamInfo->TeamMembers.Count()] = controller;
+#ifdef v34
+                    teamInfo->TeamMembers._count = teamInfo->TeamMembers._count + 1;
+#endif
+
+#ifdef v45
+                    teamInfo->TeamMembers.NumElements = teamInfo->TeamMembers.NumElements + 1;
+#endif
+                    //controller->ServerChangeTeam(team);
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->TeamInfo = teamInfo;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_Team(nullptr);
+
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bReadyToStartMatch = true;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_bReadyToStartMatch();
+
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bIsSpectator = false;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bOnlySpectator = false;
+
+#ifdef v45
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->TeamNum = team;
+                    Globals::GetGameMode<AOrionGameMode_Base>()->ChangeTeam(controller, team);
+#endif
+
+                    return true;
+                }
+                else if (noFail) {
+                    if (team == EOrionTeam::TeamRed) {
+                        AddBotControllerToTeam(controller, EOrionTeam::TeamBlue, false);
+                    }
+                    else {
+                        AddBotControllerToTeam(controller, EOrionTeam::TeamRed, false);
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     bool AddControllerToTeam(AOrionPlayerController_Game* controller, EOrionTeam team, bool noFail = true) {
@@ -1892,6 +2007,13 @@ namespace Hooking {
             OnMatchInit();
         }
 
+        if (GetAsyncKeyState(VK_F1)) {
+            UOrionAISettings* aiSettings = SDKUtils::GetLastOfType< UOrionAISettings>();
+            for (int i = 0; i < aiSettings->NamedBotHeroLists.Count(); i++) {
+                std::cout << aiSettings->NamedBotHeroLists[i].HeroSetName.ToString() << std::endl;
+            }
+        }
+
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
@@ -2040,12 +2162,70 @@ namespace Hooking {
         return true;
     }
 
+    void* origBannerSocket = nullptr;
+    __int64 BannerSocketHook(__int64 PlayerState, __int64 a2, __int64 a3, __int64 a4, char a5) {
+        std::cout << "STUBBED BANNER SOCKET FUNC" << std::endl;
+        return 0;
+    }
+
+    static UOrionHeroData* botHeroDataOverride = nullptr;
+
+    void* origSpawnActor = nullptr;
+    AActor* SpawnActorHook(UWorld* a1, UClass* a2, FVector* a3, FRotator* a4) {
+        AActor* ret = reinterpret_cast<AActor * (*)(UWorld * a1, UClass * a2, FVector * a3, FRotator * a4)>(origSpawnActor)(a1, a2, a3, a4);
+
+        if (botHeroDataOverride) { //TODO: This can be more efficient by finding out EXACTLY what class is being spawned and just comparing the top level class instead of IsA            
+            std::cout << "Bot Hero Data Override Proc'd, setting hero data spec!" << std::endl;
+            
+            std::cout << a2->GetFullName() << std::endl;
+
+            FOrionHeroDataSpec spec = FOrionHeroDataSpec();
+
+            spec.HeroData = botHeroDataOverride;
+            spec.Skin = botHeroDataOverride->DefaultSkin;
+
+            reinterpret_cast<AOrionPlayerState_Base*>(ret)->HeroDataSpec = spec;
+
+            botHeroDataOverride = nullptr;
+        }
+
+        return ret;
+    }
+
+    void* origSpawnBot = nullptr;
+    AOrionAIBot* SpawnBotHook(UOrionAISystem* a1, UOrionHeroData* a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6) {
+        std::cout << "Bot spawned, procing override!" << std::endl;
+
+        botHeroDataOverride = a2;
+
+        AOrionAIBot* ret = reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
+
+        
+        //Globals::GetGameMode<AOrionGameMode_Base>()->ChangeTeam(ret, EOrionTeam::TeamRed);
+        GameLogic::AddBotControllerToTeam(ret, EOrionTeam::TeamRed);
+
+        return ret;
+    }
+
+    //class AOrionAIBot * __ptr64 __cdecl UOrionAISystem::SpawnBot(class UOrionHeroData const & __ptr64,enum EOrionTeam::Type,enum EAIBotDifficulty,struct FVector,struct FRotator)const __ptr64
+
+    //AActor* UWorld::SpawnActor( UClass* Class, FVector const* Location, FRotator const* Rotation, const FActorSpawnParameters& SpawnParameters )
+
 #ifdef v45
     void* origObjectCrash = nullptr;
     bool ObjectCrashHook(__int64 a1) {
         return 0;
     }
 #endif
+
+    void* origTeamBuilderInfo = nullptr;
+    bool TeamBuilderInfoCheck(AOrionTeamInfo* a1) {
+        std::cout << "Overriding team builder info check!" << std::endl;
+
+        std::cout << (int)(Globals::overrideTeamBuilderInfoCheck && (a1->TeamIndex == EOrionTeam::TeamRed || a1->TeamIndex == EOrionTeam::TeamBlue)) << std::endl;
+
+        return Globals::overrideTeamBuilderInfoCheck && (a1->TeamIndex == EOrionTeam::TeamRed || a1->TeamIndex == EOrionTeam::TeamBlue);
+    }
 
     void InitHooking() {
         MH_Initialize();
@@ -2248,6 +2428,24 @@ namespace Hooking {
         //MH_EnableHook(objectCrash);
         //
 #endif
+
+        void* uworldSpawnActor = (void*)(Globals::ModuleBase + PLOffsets::UWORLD_SPAWN_ACTOR);
+
+        MH_CreateHook(uworldSpawnActor, reinterpret_cast<void*>(SpawnActorHook), &origSpawnActor);
+
+        //MH_EnableHook(uworldSpawnActor);
+
+        void* spawnBot = (void*)(Globals::ModuleBase + PLOffsets::AISYSTEM_SPAWN_BOT);
+
+        MH_CreateHook(spawnBot, reinterpret_cast<void*>(SpawnBotHook), &origSpawnBot);
+
+        //MH_EnableHook(spawnBot);
+
+        void* teamBuilderInfo = (void*)(Globals::ModuleBase + PLOffsets::HAS_TEAM_BUILDER_INFO);
+
+        MH_CreateHook(teamBuilderInfo, reinterpret_cast<void*>(TeamBuilderInfoCheck), &origTeamBuilderInfo);
+
+        MH_EnableHook(teamBuilderInfo);
     }
 }
 
@@ -2261,6 +2459,9 @@ void OnMatchInit() {
     std::cout << "Setting up teams..." << std::endl;
     GameLogic::SetupTeams();
 
+    std::cout << "Setting up bots..." << std::endl;
+    GameLogic::SetupBots();
+
     std::cout << "Hiding loading screen..." << std::endl;
     GameLogic::HideLoadingScreen();
 
@@ -2273,7 +2474,8 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Monolith02", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"Monolith02", L"game=/Game/GameTypes/PvE/MonolithMap/BP_GMM_Monolith_SoloVsAI.BP_GMM_Monolith_SoloVsAI_C?playlistid=6"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    ///Game/GameTypes/PvE/MonolithMap/BP_GMM_Monolith_SoloVsAI.uasset
 
     /*
 #if SLOW
