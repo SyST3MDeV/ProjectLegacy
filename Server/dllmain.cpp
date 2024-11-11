@@ -110,6 +110,8 @@ namespace Offsets {
     static const uintptr_t RETURN_MAIN_MENU_STRING = 0x5FEF80;
     static const uintptr_t SET_END_SEQUENCE = 0x498FF0;
     static const uintptr_t UCHANNEL_CLEANUP = 0x1DE59D0;
+    static const uintptr_t SPAWN_BOT = 0x32CBA0;
+    static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
 #endif
 }
 
@@ -280,6 +282,41 @@ namespace GameLogic {
 
     void SetupHUDForController(AOrionPlayerController_Game* controller) {
         controller->ClientSetHUD(CG::UObject::FindClass("Class OrionGame.OrionUI_Game"));
+    }
+
+    bool AddBotControllerToTeam(AOrionAIBot* controller, EOrionTeam team, bool noFail = true) {
+        AOrionGameState_MOBA* gameState = Globals::GetGameState<AOrionGameState_MOBA>();
+
+        for (int i = 0; i < gameState->Teams.Count(); i++) {
+            AOrionTeamInfo* teamInfo = gameState->Teams[i];
+
+            if (teamInfo->TeamIndex == team) {
+                if (teamInfo->TeamMembers.Count() < 5) {
+                    teamInfo->TeamMembers[teamInfo->TeamMembers.Count()] = controller;
+                    teamInfo->TeamMembers._count = teamInfo->TeamMembers._count + 1;
+                    //controller->ServerChangeTeam(team);
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->TeamInfo = teamInfo;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_Team(nullptr);
+
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bReadyToStartMatch = true;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->OnRep_bReadyToStartMatch();
+
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bIsSpectator = false;
+                    reinterpret_cast<AOrionPlayerState_Game*>(controller->PlayerState)->bOnlySpectator = false;
+                    return true;
+                }
+                else if (noFail) {
+                    if (team == EOrionTeam::TeamRed) {
+                        AddBotControllerToTeam(controller, EOrionTeam::TeamBlue, false);
+                    }
+                    else {
+                        AddBotControllerToTeam(controller, EOrionTeam::TeamRed, false);
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     bool AddControllerToTeam(AOrionPlayerController_Game* controller, EOrionTeam team, bool noFail = true) {
@@ -1560,6 +1597,64 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
+        static bool didTheFunny = false;
+        if (GetAsyncKeyState(VK_F6) && !didTheFunny) {
+            didTheFunny = true;
+            
+            //public: class AOrionAIBot * __ptr64 __cdecl UOrionAISystem::SpawnBot(class UOrionHeroData const & __ptr64,enum EOrionTeam::Type,enum EAIBotDifficulty,struct FVector,struct FRotator)const __ptr64
+            //32CBA0
+
+            std::vector<UOrionHeroData*> availableHeroData = std::vector<UOrionHeroData*>();
+
+            for (int32_t i = 0; i < UObject::GetGlobalObjects().Count(); ++i)
+            {
+                auto object = UObject::GetGlobalObjects().GetByIndex(i);
+
+                if (!object)
+                    continue;
+
+                if (!object->IsA(UOrionHeroData::StaticClass()))
+                    continue;
+
+                if (object->GetFullName().find("AnimTest") != std::string::npos || object->GetFullName().find("Default__OrionHeroData") != std::string::npos)
+                    continue;
+
+                availableHeroData.push_back(reinterpret_cast<UOrionHeroData*>(object));
+            }
+
+            for (int i = 0; i < 10 - Globals::GetGWorld()->NetDriver->ClientConnections.Count(); i++) {
+                UOrionHeroData* heroData = availableHeroData[(rand() % availableHeroData.size())];
+
+                AOrionAIBot* botController = reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem*, UOrionHeroData*, EOrionTeam, EAIBotDifficulty, FVector, FRotator)>(Globals::ModuleBase + 0x32CBA0)(SDKUtils::GetLastOfType<UOrionAISystem>(), heroData, EOrionTeam::TeamRed, EAIBotDifficulty::Normal, FVector(), FRotator());
+                GameLogic::AddBotControllerToTeam(botController, EOrionTeam::TeamRed);
+            }
+        }
+
+        static bool didTheFunny2 = false;
+        if (GetAsyncKeyState(VK_F8) && !didTheFunny2) {
+            didTheFunny2 = true;
+
+            //32E2A0
+            reinterpret_cast<void(*)(UOrionAISystem*)>(Globals::ModuleBase + 0x32E2A0)(SDKUtils::GetLastOfType<UOrionAISystem>());
+        }
+
+        static bool didTheFunny3 = false;
+        if (GetAsyncKeyState(VK_F9) && !didTheFunny3) {
+            didTheFunny3 = true;
+
+            int i = 0;
+            for (AOrionAIBot* bot : SDKUtils::GetAllObjectsOfType<AOrionAIBot>()) {
+                if (bot->GetFullName().find("Default__") == std::string::npos) {
+                    if (i >= SDKUtils::GetLastOfType< UOrionAIGoalManager>()->MapLanes.Count()) {
+                        i = 0;
+                    }
+                    //*(uint32_t*)((__int64)bot + 0x8A4) = 0;
+                    reinterpret_cast<void(*)(AOrionAIBot*, FOrionAILane*)>(Globals::ModuleBase + 0x2EB530)(bot, &SDKUtils::GetLastOfType< UOrionAIGoalManager>()->MapLanes[i]);
+                    i++;
+                }
+            }
+        }
+
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
@@ -1698,6 +1793,33 @@ namespace Hooking {
     void* origCanAddCard = nullptr;
     bool CanAddCardHook(__int64 a1, int a2, __int64 a3) {
         return true;
+    }
+
+    UOrionHeroData* spawnActorOverrideData = nullptr;
+
+    //public: class AActor * __ptr64 __cdecl UWorld::SpawnActor(class UClass * __ptr64,struct FVector const * __ptr64,struct FRotator const * __ptr64,struct FActorSpawnParameters const & __ptr64) __ptr64
+    void* origSpawnActor = nullptr;
+    AActor* SpawnActorHook(UWorld* a1, UClass* a2, FVector* a3, FRotator* a4, void* a5) {
+        AActor* ret = reinterpret_cast<AActor * (*)(UWorld*, UClass*, FVector*, FRotator*, void*)>(origSpawnActor)(a1, a2, a3, a4, a5);
+
+        if (spawnActorOverrideData && ret && a2 == AOrionPlayerState_Game::StaticClass()) {
+            AOrionPlayerState_Game* ps = reinterpret_cast<AOrionPlayerState_Game*>(ret);
+            ps->HeroDataSpec = FOrionHeroDataSpec();
+            ps->HeroDataSpec.HeroData = spawnActorOverrideData;
+            ps->HeroDataSpec.Skin = spawnActorOverrideData->DefaultSkin;
+
+            spawnActorOverrideData = nullptr;
+        }
+
+        return ret;
+    }
+
+    //public: class AOrionAIBot * __ptr64 __cdecl UOrionAISystem::SpawnBot(class UOrionHeroData const & __ptr64,enum EOrionTeam::Type,enum EAIBotDifficulty,struct FVector,struct FRotator)const __ptr64
+    void* origSpawnBot = nullptr;
+    AOrionAIBot* SpawnBotHook(UOrionAISystem* a1, UOrionHeroData* a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6) {
+        spawnActorOverrideData = a2;
+
+        return reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
     }
 
     void InitHooking() {
@@ -1880,6 +2002,18 @@ namespace Hooking {
         MH_CreateHook(uchannelCleanup, reinterpret_cast<void*>(TArrayRemoveSoundHook), &origTArrayRemoveSound);
 
         MH_EnableHook(uchannelCleanup);
+
+        void* spawnBot = (void*)(Globals::ModuleBase + Offsets::SPAWN_BOT);
+
+        MH_CreateHook(spawnBot, reinterpret_cast<void*>(SpawnBotHook), &origSpawnBot);
+
+        MH_EnableHook(spawnBot);
+
+        void* spawnActor = (void*)(Globals::ModuleBase + Offsets::SPAWN_ACTOR);
+
+        MH_CreateHook(spawnActor, reinterpret_cast<void*>(SpawnActorHook), &origSpawnActor);
+
+        MH_EnableHook(spawnActor);
     }
 }
 
