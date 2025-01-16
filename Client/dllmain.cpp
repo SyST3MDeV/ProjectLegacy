@@ -57,6 +57,13 @@ namespace Offsets {
     static const uintptr_t FILL_ACCOUNT_DATA = 0x2B82C70;
     static const uintptr_t CARD_CRASH = 0x412370;
     static const uintptr_t HANDLE_AUTO_OPEN_CLICKED = 0x718820;
+    static const uintptr_t QUERY_UNREDEEMED_FRIEND_CODES = 0x2B97490;
+    static const uintptr_t IS_LOGGED_IN = 0x640A80;
+    static const uintptr_t UPDATE_COMPLETE = 0x434660;
+    static const uintptr_t SET_PLAYER_VETERANCY = 0x918EA0;
+    static const uintptr_t PLAYROOT_UPDATE = 0x8293C0;
+    static const uintptr_t SHOULD_SHOW_NEW_USER_VIDEO = 0x8909B0;
+    static const uintptr_t SHOW_VETERANCY_SURVEY = 0x891860;
 #endif
 }
 
@@ -361,6 +368,52 @@ namespace Hooking {
         return 0;
     }
 
+    void* origQueryUnredeemedFriendCodes = nullptr;
+    __int8* QueryUnredeemedFriendCodes(UMcpContext* ctx) {
+        return nullptr;
+    }
+
+    void* origIsLoggedIn = nullptr;
+    bool IsLoggedIn(UOrionLocalPlayer* a1) {
+        return true;
+    }
+
+    void* origUpdateInProgress = nullptr;
+    bool UpdateInProgress(UOrionGameInstance* a1) {
+        *((__int64*)a1 + 0x30) = 0x0;
+        return false;
+    }
+
+    void* origSetPlayerVeterancy = nullptr;
+    __int64 SetPlayerVeterancy(UOrionMcpProfileAccount* a1,
+        const enum EOrionVeterancy* a2,
+        struct FClientUrlContext* a3) {
+        SDKUtils::GetLastOfType< UWelcomeScreen_C>()->HandleVeterancySet(true, FText());
+        return 0; 
+    }//
+
+    void* origPlayRootUpdateSelections = nullptr;
+    __int64 PlayRootUpdateSelections(UOrionBaseButton_Group* a1) {
+        return 0;
+    }
+
+    void* origShouldShowNewUserVideo = nullptr;
+    bool ShouldShowNewUserVideo(UOrionStateWidget_FrontEnd* a1) {
+        return false;
+    }
+
+    void* origShowVeterancySurvey = nullptr;
+    void ShowVeterancySurvey(UOrionStateWidget_FrontEnd* a1) {
+        return;
+    }
+
+    //
+
+    void* origThingImNotSupposedToDo = nullptr;
+    void ThingImNotSupposedToDo() {
+        return;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -430,6 +483,66 @@ namespace Hooking {
 
         MH_EnableHook(autoOpenClicked);
 
+        void* queryUnredeemedFriendCodes = (void*)(Globals::ModuleBase + Offsets::QUERY_UNREDEEMED_FRIEND_CODES);
+
+        MH_CreateHook(queryUnredeemedFriendCodes, reinterpret_cast<void*>(QueryUnredeemedFriendCodes), &origQueryUnredeemedFriendCodes);
+
+        MH_EnableHook(queryUnredeemedFriendCodes);
+
+        void* isLoggedIn = (void*)(Globals::ModuleBase + Offsets::IS_LOGGED_IN);
+
+        MH_CreateHook(isLoggedIn, reinterpret_cast<void*>(IsLoggedIn), &origIsLoggedIn);
+
+        MH_EnableHook(isLoggedIn);
+
+        void* updateInProgress = (void*)(Globals::ModuleBase + Offsets::UPDATE_COMPLETE);
+
+        MH_CreateHook(updateInProgress, reinterpret_cast<void*>(UpdateInProgress), &origUpdateInProgress);
+
+        MH_EnableHook(updateInProgress);
+
+        void* setPlayerVeterancy = (void*)(Globals::ModuleBase + Offsets::SET_PLAYER_VETERANCY);
+
+        MH_CreateHook(setPlayerVeterancy, reinterpret_cast<void*>(SetPlayerVeterancy), &origSetPlayerVeterancy);
+
+        MH_EnableHook(setPlayerVeterancy);
+
+        void* playRootUpdate = (void*)(Globals::ModuleBase + Offsets::PLAYROOT_UPDATE);
+
+        MH_CreateHook(playRootUpdate, reinterpret_cast<void*>(PlayRootUpdateSelections), &origPlayRootUpdateSelections);
+
+        MH_EnableHook(playRootUpdate);
+
+        void* shouldShowVideo = (void*)(Globals::ModuleBase + Offsets::SHOULD_SHOW_NEW_USER_VIDEO);
+
+        MH_CreateHook(shouldShowVideo, reinterpret_cast<void*>(ShouldShowNewUserVideo), &origShouldShowNewUserVideo);
+
+        MH_EnableHook(shouldShowVideo);
+
+        void* showVeterancy = (void*)(Globals::ModuleBase + Offsets::SHOW_VETERANCY_SURVEY);
+
+        MH_CreateHook(showVeterancy, reinterpret_cast<void*>(ShowVeterancySurvey), &origShowVeterancySurvey);
+
+        MH_EnableHook(showVeterancy);
+
+        void* ohno = (void*)(Globals::ModuleBase + 0xE4FB70);
+
+        MH_CreateHook(ohno, reinterpret_cast<void*>(ThingImNotSupposedToDo), &origThingImNotSupposedToDo);
+
+        MH_EnableHook(ohno);
+
+        //891860
+
+        //8909B0
+
+        //8293C0
+
+        //918EA0
+
+        //7CC3E0
+
+        //2B97490
+
         //718820
 
         //0x412370
@@ -487,8 +600,54 @@ void ConnectToMatch() {
 
 void OnGameInit() {
     //std::cout << "Enabling game console..." << std::endl;
-    //EngineLogic::EnableGameConsole();
+    EngineLogic::EnableGameConsole();
     Hooking::ProcInGameThread(ConnectToMatch);
+}
+
+void SetUIToFrontend() {
+    //std::cout << ((UObject*)(Globals::GetGWorld()->OwningGameInstance) + 0x30)->GetFullName() << std::endl;
+
+    Globals::GetLocalPlayerController<AOrionPlayerController_Base>()->SetName(L"gwog :3");
+
+    for (UOrionPlayRoot* root : SDKUtils::GetAllObjectsOfType< UOrionPlayRoot>()) {
+        if (root->Button_MatchmakingSettings) {
+            root->Button_MatchmakingSettings->SetVisibility(ESlateVisibility::Hidden);
+            root->Button_MatchmakingSettings->SetIsEnabled(false);
+        }
+
+        if (root->Button_PvP) {
+            root->Button_PvP->SetVisibility(ESlateVisibility::Hidden);
+            root->Button_PvP->SetIsEnabled(false);
+        }
+
+        if (root->Button_Coop) {
+            root->Button_Coop->SetVisibility(ESlateVisibility::Hidden);
+            root->Button_Coop->SetIsEnabled(false);
+        }
+
+        if (root->Button_Tutorial_1v1) {
+            root->Button_Tutorial_1v1->SetVisibility(ESlateVisibility::Hidden);
+            root->Button_Tutorial_1v1->SetIsEnabled(false);
+        }
+
+        if (root->Button_Ready) {
+            root->Button_Ready->EnableButton();
+        }
+    }
+
+    //GameLogic::SetUIState(EOrionUIState::FrontEnd);
+}
+
+void MainLoop() {
+    while (!GetAsyncKeyState(VK_F10)) {
+
+    }
+
+    Hooking::ProcInGameThread(SetUIToFrontend);
+
+    while (GetAsyncKeyState(VK_F10)) {
+
+    }
 }
 
 void Main() {

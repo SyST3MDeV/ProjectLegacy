@@ -103,6 +103,8 @@
     <ClCompile Include="SDK\OnlineSubsystemUtils_Package.cpp" />
     <ClCompile Include="SDK\OnlineSubsystem_Package.cpp" />
     <ClCompile Include="SDK\OrionGame_Package.cpp" />
+    <ClCompile Include="SDK\UMG_Package.cpp" />
+    <ClCompile Include="SDK\WelcomeScreen_Package.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

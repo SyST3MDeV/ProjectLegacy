@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
 
-#define IS_SERVER true
+#define IS_SERVER false
 
 namespace Offsets {
     //Hooking Offsets

@@ -79,6 +79,7 @@ namespace Offsets {
     static const uintptr_t FORCE_NET_UPDATE = 0x1B7E250;
     static const uintptr_t IS_PENDING_KILL_PENDING = 0x2AFBB0;
     static const uintptr_t SEND_CLIENT_ADJUSTMENT = 0x212FD50;
+    static const uintptr_t UACTORCHANNEL_CLOSE = 0x1DE6970;
 
     //Hooking offsets
     static const uintptr_t PROCESSEVENT = 0xFB3420;
@@ -112,6 +113,7 @@ namespace Offsets {
     static const uintptr_t UCHANNEL_CLEANUP = 0x1DE59D0;
     static const uintptr_t SPAWN_BOT = 0x32CBA0;
     static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
+    static const uintptr_t NOTIFY_ACTOR_DESTROYED = 0x1F67B20;
 #endif
 }
 
@@ -979,7 +981,7 @@ namespace Networking {
         return out;
     }
 
-    static std::vector<AActor*> actorsToDelete = std::vector<AActor*>();
+    static std::vector<UActorChannel*> channelsToClose = std::vector<UActorChannel*>();
 
     int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<ActorInfo> PriorityActors, int& OutUpdated) {
         if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //TODO: This is both blatantly incorrect (Offset for UChildConnection, not UNetConnection), and somehow fucked up on top of that (+0x20 of the actual function). I don't wanna touch it rn, but TODO for the netcode refactor
@@ -994,6 +996,15 @@ namespace Networking {
 
         for (int j = 0; j < PriorityActors.size(); j++) {
             UActorChannel* Channel = PriorityActors[j].channel;
+
+            /*
+            for (UActorChannel* cmpChannel : channelsToClose) {
+                if (Channel == cmpChannel) {
+                    
+                    
+                    continue;
+                }
+            }*/
 
             if (!Channel || Channel->Actor) {
                 AActor* Actor = PriorityActors[j].actor;
@@ -1041,7 +1052,7 @@ namespace Networking {
                     }
                 }
 
-                if (Channel && Channel->Actor) {
+                if (Channel && Channel->Actor && !reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(Channel->Actor)) {
                     if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + Offsets::IS_NET_READY)(Connection, 0)) { //IsNetReady
                         if (reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::REPLICATE_ACTOR)(Channel)) { //ReplicateActor
                             //std::cout << "Replicated Actor " << Actor->GetFullName() << std::endl;
@@ -1078,6 +1089,9 @@ namespace Networking {
                         //std::cout << "Bailing on processing actors..." << std::endl;
                         return j;
                     }
+                }
+                else if(Channel && Channel->Actor) {
+                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(Channel);
                 }
             }
         }
@@ -1130,8 +1144,8 @@ namespace Networking {
             //if (reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + 0x1B89A60)(actor) != Globals::GetGWorld())
                 //continue;
 
-            if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
-                continue;
+            //if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
+                //continue;
 
             FNetworkObjectInfo* newConsider = (FNetworkObjectInfo*)EngineLogic::Malloc(sizeof(FNetworkObjectInfo), 0);
             newConsider->actor = actor;
@@ -1199,8 +1213,6 @@ namespace Networking {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + Offsets::SEND_CLIENT_ADJUSTMENT)(Connection->PlayerController);
             }
 
-            
-
             std::vector<ActorInfo> aInfos = ServerReplicateActors_PrioritizeActors(Connection, ConsiderList);
 
             int Updated = 0;
@@ -1217,6 +1229,8 @@ namespace Networking {
                 Actor->bPendingNetUpdate = true;
             }
         }
+
+        channelsToClose.clear();
     }
 }
 
@@ -1597,6 +1611,33 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
+        static bool abilitySwapDone = false;
+        if (GetAsyncKeyState(VK_F10)) {
+            abilitySwapDone = true;
+            std::vector< UOrionAbilitySystemComponent*> allAbilitySets = SDKUtils::GetAllObjectsOfType<UOrionAbilitySystemComponent>();
+
+            FGameplayAbilitySpec spec;
+
+            for (UOrionAbilitySystemComponent* set : allAbilitySets) {
+                for (int i = 0; i < set->ActivatableAbilities.Items.Count(); i++) {
+                    if (set->ActivatableAbilities.Items[i].Ability->GetFullName().find("Hook") != std::string::npos) {
+                        std::cout << "FOUND" << std::endl;
+                        spec = set->ActivatableAbilities.Items[i];
+                        break;
+                    }
+                }
+            }
+
+            for (UOrionAbilitySystemComponent* set : allAbilitySets) {
+                for (int i = 0; i < set->ActivatableAbilities.Items.Count(); i++) {
+                    if (set->ActivatableAbilities.Items[i].Ability->GetFullName().find("Burden") != std::string::npos) {
+                        std::cout << "REPLACED" << std::endl;
+                        set->ActivatableAbilities.Items[i] = spec;
+                    }
+                }
+            }
+        }
+
         static bool didTheFunny = false;
         if (GetAsyncKeyState(VK_F6) && !didTheFunny) {
             didTheFunny = true;
@@ -1617,6 +1658,9 @@ namespace Hooking {
                     continue;
 
                 if (object->GetFullName().find("AnimTest") != std::string::npos || object->GetFullName().find("Default__OrionHeroData") != std::string::npos)
+                    continue;
+
+                if (object->GetFullName().find("Chains") == std::string::npos) //Riktor only
                     continue;
 
                 availableHeroData.push_back(reinterpret_cast<UOrionHeroData*>(object));
@@ -1822,6 +1866,22 @@ namespace Hooking {
         return reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
     }
 
+    //char __fastcall UNetDriver::NotifyActorDestroyed(UNetDriver *this, struct AActor *a2, char a3)
+    void* origNotifyActorDestroyed = nullptr;
+    bool NotifyActorDestroyed(UWorld* a1, AActor* a2, bool a3, bool a4) {
+        for (Networking::ConnectionChannels ccs : Networking::connectionChannels) {
+            for (UActorChannel* ch : *ccs.channels) {
+                if (ch->Actor == a2) {
+                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(ch);
+                    
+                    //Networking::channelsToClose.push_back(ch);
+                }
+            }
+        }
+
+        return reinterpret_cast<bool(*)(UWorld*, AActor*, bool, bool)>(origNotifyActorDestroyed)(a1, a2, a3, a4);
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -2014,6 +2074,12 @@ namespace Hooking {
         MH_CreateHook(spawnActor, reinterpret_cast<void*>(SpawnActorHook), &origSpawnActor);
 
         MH_EnableHook(spawnActor);
+
+        void* notifyActorDestroyed = (void*)(Globals::ModuleBase + Offsets::NOTIFY_ACTOR_DESTROYED);
+
+        MH_CreateHook(notifyActorDestroyed, reinterpret_cast<void*>(NotifyActorDestroyed), &origNotifyActorDestroyed);
+
+        MH_EnableHook(notifyActorDestroyed);
     }
 }
 
@@ -2039,7 +2105,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"
+    EngineLogic::LoadMap(L"/Game/Maps/Sovereign/Sovereign.umap", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
 
     /*
 #if SLOW
