@@ -2007,10 +2007,28 @@ namespace Hooking {
             OnMatchInit();
         }
 
-        if (GetAsyncKeyState(VK_F1)) {
-            UOrionAISettings* aiSettings = SDKUtils::GetLastOfType< UOrionAISettings>();
-            for (int i = 0; i < aiSettings->NamedBotHeroLists.Count(); i++) {
-                std::cout << aiSettings->NamedBotHeroLists[i].HeroSetName.ToString() << std::endl;
+                static bool botspawntest = false;
+        if (GetAsyncKeyState(VK_F1) && !botspawntest) {
+            botspawntest = true;
+
+            //public: class AOrionAIBot * __ptr64 __cdecl UOrionAISystem::SpawnBot(class UOrionHeroData const & __ptr64,enum EOrionTeam::Type,enum EAIBotDifficulty,struct FVector,struct FRotator)const __ptr64
+            //32CBA0
+            std::vector<UOrionHeroData*> availableHeroData = std::vector<UOrionHeroData*>();
+            for (int32_t i = 0; i < UObject::GObjects->Num(); ++i)
+            {
+                auto object = UObject::GObjects->GetByIndex(i);
+                if (!object)
+                    continue;
+                if (!object->IsA(UOrionHeroData::StaticClass()))
+                    continue;
+                if (object->GetFullName().find("AnimTest") != std::string::npos || object->GetFullName().find("Default__OrionHeroData") != std::string::npos)
+                    continue;
+                availableHeroData.push_back(reinterpret_cast<UOrionHeroData*>(object));
+            }
+            for (int i = 0; i < 10 - Globals::GetGWorld()->NetDriver->ClientConnections.Count(); i++) {
+                UOrionHeroData* heroData = availableHeroData[(rand() % availableHeroData.size())];
+                AOrionAIBot* botController = reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem*, UOrionHeroData*, EOrionTeam, EAIBotDifficulty, FVector, FRotator)>(Globals::ModuleBase + 0x496DB0)(SDKUtils::GetLastOfType<UOrionAISystem>(), heroData, EOrionTeam::TeamRed, EAIBotDifficulty::Veteran, FVector(), FRotator());
+                GameLogic::AddBotControllerToTeam(botController, EOrionTeam::TeamRed);
             }
         }
 
@@ -2194,17 +2212,10 @@ namespace Hooking {
 
     void* origSpawnBot = nullptr;
     AOrionAIBot* SpawnBotHook(UOrionAISystem* a1, UOrionHeroData* a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6) {
-        std::cout << "Bot spawned, procing override!" << std::endl;
-
         botHeroDataOverride = a2;
+        return reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
 
-        AOrionAIBot* ret = reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
 
-        
-        //Globals::GetGameMode<AOrionGameMode_Base>()->ChangeTeam(ret, EOrionTeam::TeamRed);
-        GameLogic::AddBotControllerToTeam(ret, EOrionTeam::TeamRed);
-
-        return ret;
     }
 
     //class AOrionAIBot * __ptr64 __cdecl UOrionAISystem::SpawnBot(class UOrionHeroData const & __ptr64,enum EOrionTeam::Type,enum EAIBotDifficulty,struct FVector,struct FRotator)const __ptr64
@@ -2433,13 +2444,13 @@ namespace Hooking {
 
         MH_CreateHook(uworldSpawnActor, reinterpret_cast<void*>(SpawnActorHook), &origSpawnActor);
 
-        //MH_EnableHook(uworldSpawnActor);
+        MH_EnableHook(uworldSpawnActor);
 
         void* spawnBot = (void*)(Globals::ModuleBase + PLOffsets::AISYSTEM_SPAWN_BOT);
 
         MH_CreateHook(spawnBot, reinterpret_cast<void*>(SpawnBotHook), &origSpawnBot);
 
-        //MH_EnableHook(spawnBot);
+        MH_EnableHook(spawnBot);
 
         void* teamBuilderInfo = (void*)(Globals::ModuleBase + PLOffsets::HAS_TEAM_BUILDER_INFO);
 
