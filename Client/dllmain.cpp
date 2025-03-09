@@ -180,6 +180,37 @@ namespace GameLogic {
     }
 }
 
+namespace Frontend{
+    void NukeUIElement(UUserWidget* widget) {
+        if (widget) {
+            widget->SetVisibility(ESlateVisibility::Hidden);
+            widget->SetIsEnabled(false);
+        }
+    }
+
+    void SetUserName(std::wstring name) {
+        Globals::GetLocalPlayerController<AOrionPlayerController_Base>()->SetName(name.c_str());
+    }
+
+    void SetupFrontend() {
+        SetUserName(L"gwog :3");
+        
+        for (UOrionPlayRoot* root : SDKUtils::GetAllObjectsOfType< UOrionPlayRoot>()) {
+            NukeUIElement(root->Button_MatchmakingSettings);
+
+            NukeUIElement(root->Button_PvP);
+
+            NukeUIElement(root->Button_Coop);
+
+            NukeUIElement(root->Button_Tutorial_1v1);
+
+            if (root->Button_Ready) {
+                root->Button_Ready->EnableButton();
+            }
+        }
+    }
+}
+
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
 
@@ -399,18 +430,13 @@ namespace Hooking {
 
     void* origShouldShowNewUserVideo = nullptr;
     bool ShouldShowNewUserVideo(UOrionStateWidget_FrontEnd* a1) {
+        Frontend::SetupFrontend();
+        EngineLogic::EnableGameConsole();
         return false;
     }
 
     void* origShowVeterancySurvey = nullptr;
     void ShowVeterancySurvey(UOrionStateWidget_FrontEnd* a1) {
-        return;
-    }
-
-    //
-
-    void* origThingImNotSupposedToDo = nullptr;
-    void ThingImNotSupposedToDo() {
         return;
     }
 
@@ -525,12 +551,6 @@ namespace Hooking {
 
         MH_EnableHook(showVeterancy);
 
-        void* ohno = (void*)(Globals::ModuleBase + 0xE4FB70);
-
-        MH_CreateHook(ohno, reinterpret_cast<void*>(ThingImNotSupposedToDo), &origThingImNotSupposedToDo);
-
-        MH_EnableHook(ohno);
-
         //891860
 
         //8909B0
@@ -598,56 +618,7 @@ void ConnectToMatch() {
     EngineLogic::ExecuteConsoleCommand(finalCmd.c_str());
 }
 
-void OnGameInit() {
-    //std::cout << "Enabling game console..." << std::endl;
-    EngineLogic::EnableGameConsole();
-    Hooking::ProcInGameThread(ConnectToMatch);
-}
-
-void SetUIToFrontend() {
-    //std::cout << ((UObject*)(Globals::GetGWorld()->OwningGameInstance) + 0x30)->GetFullName() << std::endl;
-
-    Globals::GetLocalPlayerController<AOrionPlayerController_Base>()->SetName(L"gwog :3");
-
-    for (UOrionPlayRoot* root : SDKUtils::GetAllObjectsOfType< UOrionPlayRoot>()) {
-        if (root->Button_MatchmakingSettings) {
-            root->Button_MatchmakingSettings->SetVisibility(ESlateVisibility::Hidden);
-            root->Button_MatchmakingSettings->SetIsEnabled(false);
-        }
-
-        if (root->Button_PvP) {
-            root->Button_PvP->SetVisibility(ESlateVisibility::Hidden);
-            root->Button_PvP->SetIsEnabled(false);
-        }
-
-        if (root->Button_Coop) {
-            root->Button_Coop->SetVisibility(ESlateVisibility::Hidden);
-            root->Button_Coop->SetIsEnabled(false);
-        }
-
-        if (root->Button_Tutorial_1v1) {
-            root->Button_Tutorial_1v1->SetVisibility(ESlateVisibility::Hidden);
-            root->Button_Tutorial_1v1->SetIsEnabled(false);
-        }
-
-        if (root->Button_Ready) {
-            root->Button_Ready->EnableButton();
-        }
-    }
-
-    //GameLogic::SetUIState(EOrionUIState::FrontEnd);
-}
-
 void MainLoop() {
-    while (!GetAsyncKeyState(VK_F10)) {
-
-    }
-
-    Hooking::ProcInGameThread(SetUIToFrontend);
-
-    while (GetAsyncKeyState(VK_F10)) {
-
-    }
 }
 
 void Main() {
@@ -658,8 +629,6 @@ void Main() {
     Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
 
     Hooking::InitHooking();
-
-    OnGameInit();
 
     while (true) {
         //MainLoop();

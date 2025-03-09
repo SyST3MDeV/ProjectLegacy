@@ -691,7 +691,7 @@ namespace GameplayAbilities {
             //std::cout << "Cast succeeded!" << std::endl;
         }
         else {
-            //std::cout << "Bailed, cast failed!" << std::endl;
+            std::cout << "Bailed, cast failed! Ability: " << spec->Ability->GetName() << std::endl;
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + Offsets::CLIENT_ACTIVATE_ABILITY_FAILED)(component, Handle, PredictionKey.Current);
             spec->InputPressed = false;
             
@@ -1359,6 +1359,7 @@ namespace Hooking {
             return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
         }
 
+        /*
         if (function == internalServerTryActiveAbilityFunctionWithEventData) {
             //std::cout << "DUMMY FUNCTION CALLED" << std::endl;
 
@@ -1368,6 +1369,7 @@ namespace Hooking {
 
             TriggerAbilities(castObj);
         }
+        */
 
         if (object->IsA(UOrionDamage::StaticClass())) {
             UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
@@ -1699,10 +1701,12 @@ namespace Hooking {
             }
         }
 
+        /*
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
         }
+        */
 
         if (Globals::shouldStartMatch) {
             numTicksWaitedToStartMatch++;
@@ -2105,7 +2109,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"/Game/Maps/Sovereign/Sovereign.umap", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
+    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
 
     /*
 #if SLOW
