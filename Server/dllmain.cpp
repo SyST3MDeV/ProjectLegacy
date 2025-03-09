@@ -608,55 +608,6 @@ namespace GameplayAbilities {
 
     static std::vector<AbilityProcInfo> abilitiesToProc = std::vector<AbilityProcInfo>();
 
-    /*
-    void UAbilitySystemComponent::InternalServerTryActiveAbility(FGameplayAbilitySpecHandle Handle, bool InputPressed, const FPredictionKey& PredictionKey, const FGameplayEventData* TriggerEventData)
-{
-#if WITH_SERVER_CODE
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (DenyClientActivation > 0)
-	{
-		DenyClientActivation--;
-		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
-		return;
-	}
-#endif
-
-	FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
-	if (!Spec)
-	{
-		// Can potentially happen in race conditions where client tries to activate ability that is removed server side before it is received.
-		ABILITY_LOG(Display, TEXT("InternalServerTryActiveAbility. Rejecting ClientActivation of ability with invalid SpecHandle!"));
-		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
-		return;
-	}
-
-	// Consume any pending target info, to clear out cancels from old executions
-	ConsumeAllReplicatedData(Handle, PredictionKey);
-
-	FScopedPredictionWindow ScopedPredictionWindow(this, PredictionKey);
-
-	const UGameplayAbility* AbilityToActivate = Spec->Ability;
-
-	ensure(AbilityToActivate);
-	ensure(AbilityActorInfo.IsValid());
-
-	UGameplayAbility* InstancedAbility = nullptr;
-	Spec->InputPressed = true;
-
-	// Attempt to activate the ability (server side) and tell the client if it succeeded or failed.
-	if (InternalTryActivateAbility(Handle, PredictionKey, &InstancedAbility, nullptr, TriggerEventData))
-	{
-		// TryActivateAbility handles notifying the client of success
-	}
-	else
-	{
-		ABILITY_LOG(Display, TEXT("InternalServerTryActiveAbility. Rejecting ClientActivation of %s. InternalTryActivateAbility failed"), *GetNameSafe(Spec->Ability) );
-		ClientActivateAbilityFailed(Handle, PredictionKey.Current);
-		Spec->InputPressed = false;
-	}
-	MarkAbilitySpecDirty(*Spec);
-#endif
-}*/
     void InternalServerTryActiveAbility(UAbilitySystemComponent* component, FGameplayAbilitySpecHandle Handle, bool inputPressed, FPredictionKey& PredictionKey, FGameplayEventData* TriggerEventData) {
         std::cout << Handle.Handle << std::endl;
 
@@ -1278,20 +1229,6 @@ namespace Hooking {
         //ProcInGameThread(TriggerAbilities);
     //}
 
-    /*
-    void MakePrimeBuffLastForever() {
-        for (AOrionCarriedObjective* carriedObjective: SDKUtils::GetAllObjectsOfType< AOrionCarriedObjective>()) {
-            carriedObjective->MaxLifespanTimer.Value = 10000.0f;
-            carriedObjective->ObjectiveLifespanTimer.Value = 10000.0f;
-        }
-    }
-
-    void MakePrimeBuffLastForeverDelay() {
-        Sleep(10 * 1000);
-        Hooking::ProcInGameThread(MakePrimeBuffLastForever);
-    }
-    */
-
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
@@ -1311,46 +1248,6 @@ namespace Hooking {
         if (!internalServerTryActiveAbilityFunctionWithEventData)
             internalServerTryActiveAbilityFunctionWithEventData = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbilityWithEventData");
 
-        if(!primeKilledFunction)
-            primeKilledFunction = UObject::FindObject<UFunction>("Function BP_OrionCharAI_JungleCreep_PrimeHelix_V2.BP_OrionCharAI_JungleCreep_PrimeHelix_V2_C.OnDeath_Event_1");
-
-        if(!primeDeliveredFunction)
-            primeDeliveredFunction = UObject::FindObject<UFunction>("Function BP_PrimeHelix_v2.BP_PrimeHelix_v2_C.OnScoredObjective");
-
-        /*
-        if (function == primeDeliveredFunction) {
-            ABP_PrimeHelix_v2_C* theBuff = reinterpret_cast<ABP_PrimeHelix_v2_C*>(object);
-
-            EOrionTeam team = reinterpret_cast<AOrionPlayerController_Game*>(theBuff->Carrier->Controller)->GetTeamNum();
-
-            if (team == EOrionTeam::TeamRed) {
-                EngineLogic::ExecuteConsoleCommand(L"forcewinmatch 0");
-            }
-            else {
-                EngineLogic::ExecuteConsoleCommand(L"forcewinmatch 1");
-            }
-
-            return nullptr;
-        }
-
-        if (primeKilledFunction && function == primeKilledFunction) {
-            //32DF70
-
-            ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C* theHelix = reinterpret_cast<ABP_OrionCharAI_JungleCreep_PrimeHelix_V2_C*>(object);
-
-            FGameplayTagContainer tags1 = FGameplayTagContainer();
-            FGameplayTagContainer tags2 = FGameplayTagContainer();
-            FGameplayTagContainer tags3 = FGameplayTagContainer();
-
-            reinterpret_cast<void(*)(AOrionPickupManager*, UClass*, int, AActor*, AController*, AActor*, AActor*, int, FVector, FGameplayTagContainer*, FGameplayTagContainer*, FGameplayTagContainer*, float)>(Globals::ModuleBase + 0x5324B0)(SDKUtils::GetLastOfType<AOrionPickupManager>(), ABP_PrimeHelix_v2_C::StaticClass(), 1, theHelix, theHelix->Controller, theHelix, theHelix->CachedBestTarget, 2, theHelix->K2_GetActorLocation(), &tags1, &tags2, &tags3, 1.0f);
-
-            //std::thread t(MakePrimeBuffLastForeverDelay);
-           // t.detach();
-
-            return nullptr;
-        }
-        */
-
         if (function == internalServerTryActiveAbilityFunction) {
             UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(params);
 
@@ -1359,7 +1256,6 @@ namespace Hooking {
             return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
         }
 
-        /*
         if (function == internalServerTryActiveAbilityFunctionWithEventData) {
             //std::cout << "DUMMY FUNCTION CALLED" << std::endl;
 
@@ -1369,7 +1265,6 @@ namespace Hooking {
 
             TriggerAbilities(castObj);
         }
-        */
 
         if (object->IsA(UOrionDamage::StaticClass())) {
             UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
@@ -1701,12 +1596,10 @@ namespace Hooking {
             }
         }
 
-        /*
         while (GameplayAbilities::instantConfirmTasks.size() > 0) {
             GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
             GameplayAbilities::instantConfirmTasks.pop_back();
         }
-        */
 
         if (Globals::shouldStartMatch) {
             numTicksWaitedToStartMatch++;
@@ -2110,16 +2003,6 @@ void OnGameInit() {
 
     std::cout << "Loading map..." << std::endl;
     EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
-
-    /*
-#if SLOW
-    Sleep(100 * 1000);
-#else
-    Sleep(30 * 1000);
-#endif
-
-    Hooking::ProcInGameThread(OnMatchInit);
-    */
 }
 
 void ForceStartMatch() {
