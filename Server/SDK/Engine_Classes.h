@@ -3263,9 +3263,9 @@ namespace CG
 	class ULevel : public UObject
 	{
 	public:
+		unsigned char                                              UnknownData_EIXV[0x8];// 0x0028(0x0088) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
 		FURL					URL;
-		TArray<AActor*> Actors;
-		unsigned char                                              UnknownData_EIXV[0x8];                                  // 0x0028(0x0088) MISSED OFFSET (FIX SPACE BETWEEN PREVIOUS PROPERTY)
+		TArray<AActor*> Actors;                                  
 		class UWorld*                                              OwningWorld;                                             // 0x00B0(0x0008) ZeroConstructor, Transient, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
 		class UModel*                                              Model;                                                   // 0x00B8(0x0008) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
 		TArray<class UModelComponent*>                             ModelComponents;                                         // 0x00C0(0x0010) ExportObject, ZeroConstructor, ContainsInstancedReference, NativeAccessSpecifierPublic

@@ -743,37 +743,40 @@ namespace Networking {
         
         std::vector<AActor*> actors = std::vector<AActor*>();
 
-        for (int i = 0; i < UObject::GObjects->Count(); i++) {
-            UObject* obj = UObject::GObjects->GetByIndex(i);
+        for (int i = 0; i < Globals::GetGWorld()->Levels.Count(); i++) {
+            ULevel* Level = Globals::GetGWorld()->Levels[i];
 
-            if (!obj)
-                continue;
+            if (Level) {
+                for (int j = 0; j < Level->Actors.Count(); j++) {
+                    AActor* actor = Level->Actors[j];
 
-            if (!obj->IsA(AActor::StaticClass())) // this fucking blows, TODO use classflags
-                continue;
+                    if (!actor)
+                        continue;
 
-            AActor* actor = reinterpret_cast<AActor*>(obj);
+                    if (actor->RemoteRole == ENetRole::ROLE_None)
+                        continue;
 
-            if (actor->RemoteRole == ENetRole::ROLE_None)
-                continue;
+                    if (!actor->bReplicates)
+                        continue;
 
-            if (!actor->bReplicates)
-                continue;
+                    if (actor->bActorIsBeingDestroyed)
+                        continue;
 
-            if (actor->bActorIsBeingDestroyed)
-                continue;
+                    if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
+                        continue;
 
-            if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
-                continue;
+                    /*
+                    UWorld* cmpWorld = reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + Offsets::AACTOR_GET_WORLD)(actor);
 
-            UWorld* cmpWorld = reinterpret_cast<UWorld* (*)(AActor*)>(Globals::ModuleBase + Offsets::AACTOR_GET_WORLD)(actor);
+                    if (cmpWorld != Globals::GetGWorld())
+                        continue;
+                        */
 
-            if (cmpWorld != Globals::GetGWorld())
-                continue;
+                    reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + Offsets::CALL_PRE_REPLICATION)(actor, GetNetDriver());
 
-            reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + Offsets::CALL_PRE_REPLICATION)(actor, GetNetDriver());
-
-            actors.push_back(actor);
+                    actors.push_back(actor);
+                }
+            }
         }
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
@@ -1296,10 +1299,11 @@ namespace Hooking {
                 }
             }
         }
-
-        while (GameplayAbilities::instantConfirmTasks.size() > 0) {
-            GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
-            GameplayAbilities::instantConfirmTasks.pop_back();
+        if (GameplayAbilities::instantConfirmTasks.size() > 0) {
+            while (GameplayAbilities::instantConfirmTasks.size() > 0) {
+                GameplayAbilities::instantConfirmTasks.back()->ConfirmOrWait();
+                GameplayAbilities::instantConfirmTasks.pop_back();
+            }
         }
 
         if (Globals::shouldStartMatch) {
@@ -1341,7 +1345,7 @@ namespace Hooking {
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
 
         if (target) {
-            if (target->Ability && target->Ability->GetFullName().find("Primary") != std::string::npos) {
+            if (target->Ability && reinterpret_cast<UOrionAbility*>(target->Ability)->GetFullName().find("Primary") != std::string::npos) {
                 GameplayAbilities::instantConfirmTasks.push_back(target);
             }
             else {
