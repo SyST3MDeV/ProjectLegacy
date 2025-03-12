@@ -80,6 +80,8 @@ namespace Offsets {
     static const uintptr_t IS_PENDING_KILL_PENDING = 0x2AFBB0;
     static const uintptr_t SEND_CLIENT_ADJUSTMENT = 0x212FD50;
     static const uintptr_t UACTORCHANNEL_CLOSE = 0x1DE6970;
+    static const uintptr_t UACTORCHANNEL_CLEANUP = 0x1DE59D0;
+    static const uintptr_t AACTOR_GET_WORLD = 0x1B89A60;
 
     //Hooking offsets
     static const uintptr_t PROCESSEVENT = 0xFB3420;
@@ -684,33 +686,20 @@ namespace Networking {
         return Globals::GetGWorld()->NetDriver;
     }
 
-    std::vector<AActor*> GetActorConsiderList() {
-        std::vector<AActor*> allActors = SDKUtils::GetAllObjectsOfType<AActor>();
-
-        std::vector<AActor*> actorsToConsider = std::vector<AActor*>();
-
-        for (AActor* actor : allActors) {
-            if (actor->RemoteRole == ENetRole::ROLE_None || actor->GetFullName().find("Default") != std::string::npos || !actor->bReplicates) //
-                continue;
-
-            reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + Offsets::CALL_PRE_REPLICATION)(actor, GetNetDriver());
-
-            actorsToConsider.push_back(actor);
-        }
-
-        return actorsToConsider;
-    }
+    struct ConnectionChannels {
+        UNetConnection* connection;
+        std::vector<UActorChannel*>* channels;
+    };
 
     UActorChannel* GetChannelForConnectionAndActor(UNetConnection* connection, AActor* actor) {
-        for (int i = 0; i < connection->OpenChannels.Count(); i++) {
-            UActorChannel* channel = reinterpret_cast<UActorChannel*>(connection->OpenChannels[i]);
-
-            if (channel && (!channel->IsA(UActorChannel::StaticClass())))
+        for (UChannel* Channel : connection->OpenChannels) {
+            if (Channel->Class != UActorChannel::StaticClass())
                 continue;
 
-            if (channel && channel->Connection == connection && channel->Actor == actor) {
-                return channel;
-            }
+            UActorChannel* ActorChannel = reinterpret_cast<UActorChannel*>(Channel);
+
+            if (ActorChannel->Actor == actor)
+                return ActorChannel;
         }
 
         return nullptr;
@@ -734,318 +723,12 @@ namespace Networking {
         USOCK_Open = 3, // Connection is open.
     };
 
-    struct FNetworkObjectInfo {
-        AActor* actor;
-        double NextUpdateTime;
-        double LastNetReplicateTime;
-        float OptimalNetUpdateDelta;
-    };
-
-    bool ServerReplicateActors_PrepConnections() {
-        bool bFoundReadyConnection = false;
-
-        for (int32_t ConnIdx = 0; ConnIdx < GetNetDriver()->ClientConnections.Count(); ConnIdx++) {
-            UNetConnection* Connection = GetNetDriver()->ClientConnections[ConnIdx];
-
-            AActor* OwningActor = Connection->OwningActor;
-
-            if (OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f)) {
-                bFoundReadyConnection = true;
-
-                Connection->ViewTarget = Connection->PlayerController ? Connection->PlayerController->GetViewTarget() : OwningActor;
-            }
-            else {
-                Connection->ViewTarget = nullptr;
-            }
-        }
-
-        return bFoundReadyConnection;
-    }
-
-    struct FSharedPtr {
-        FNetworkObjectInfo* ptr;
-        void* pad;
-    };
-
-    struct FNetworkObjectList {
-        UC::TSet<FSharedPtr> FNetworkObjectSet;
-    };
-
-    FNetworkObjectList GetNetworkObjectList(UNetDriver* NetDriver) {
-        return *(FNetworkObjectList*)((__int64)NetDriver + 0x3A0);
-    }
-
     float GetWorldTimeSeconds(UWorld* world) {
         return *(float*)((__int64)world + 0x8E0);
     }
 
-    void ServerReplicateActors_BuildConsiderList(std::vector<FNetworkObjectInfo*>& ConsiderList, float ServerTickTime) {
-        int32_t NumInitiallyDormant = 0;
-
-        std::cout << GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.Num() << std::endl;
-
-        for (int i = 0; i < GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.Num(); i++) {
-            if (!GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet.IsValidIndex(i))
-                continue;
-
-            FNetworkObjectInfo* ActorInfo = (FNetworkObjectInfo*)EngineLogic::Malloc(sizeof(FNetworkObjectInfo), 0);
-
-            ActorInfo = GetNetworkObjectList(GetNetDriver()).FNetworkObjectSet[i].ptr;
-
-            if (ActorInfo) {
-                std::cout << "Valid ActorInfo!" << std::endl;
-                AActor* actor = ActorInfo->actor;
-
-                if (actor->GetRemoteRole() == ENetRole::ROLE_None || actor->GetFullName().find("SpawnPad_Agent") != std::string::npos) {
-                    continue;
-                }
-
-                if ((actor->bPendingNetUpdate || GetWorldTimeSeconds(Globals::GetGWorld()) > actor->NetUpdateTime)) {
-                    if (ActorInfo->LastNetReplicateTime == 0) {
-                        ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
-                        ActorInfo->OptimalNetUpdateDelta = 1.0f / actor->NetUpdateFrequency;
-                    }
-
-                    const float ScaleDownStartTime = 2.0f;
-                    const float ScaleDownTimeRange = 5.0f;
-
-                    const float LastReplicateDelta = GetWorldTimeSeconds(Globals::GetGWorld()) - ActorInfo->LastNetReplicateTime;
-
-                    if (LastReplicateDelta > ScaleDownStartTime) {
-                        if (actor->MinNetUpdateFrequency == 0.0f) {
-                            actor->MinNetUpdateFrequency = 2.0f;
-                        }
-
-                        const float MinOptimalDelta = 1.0f / actor->NetUpdateFrequency;
-                        const float MaxOptimalDelta = fmaxf(1.0f / actor->MinNetUpdateFrequency, MinOptimalDelta);
-
-                        const float Alpha = std::clamp((LastReplicateDelta - ScaleDownStartTime) / ScaleDownTimeRange, 0.0f, 1.0f);
-                        ActorInfo->OptimalNetUpdateDelta = std::lerp(MinOptimalDelta, MaxOptimalDelta, Alpha);
-                    }
-
-                    if (!actor->bPendingNetUpdate) {
-                        const float NextUpdateDelta = ActorInfo->OptimalNetUpdateDelta;
-
-                        actor->NetUpdateTime = GetWorldTimeSeconds(Globals::GetGWorld()) + std::rand() * ServerTickTime + NextUpdateDelta;
-
-                        actor->LastNetUpdateTime = GetNetDriver()->Time;
-                    }
-
-                    actor->bPendingNetUpdate = false;
-
-                    ConsiderList.push_back(ActorInfo);
-
-                    reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + Offsets::CALL_PRE_REPLICATION)(actor, GetNetDriver()); //CallPreReplication
-                }
-            }
-            else {
-                std::cout << "Invalid ActorInfo!" << std::endl;
-            }
-        }
-    }
-
-    struct FActorPriority {
-        int Priority;
-
-        FNetworkObjectInfo* ActorInfo;
-        UActorChannel* Channel;
-    };
-
     int* GetTickCountPtr(UNetConnection* connection) {
         return (int*)((__int64)connection + 0x7F);
-    }
-
-    //static std::vector<UActorChannel*> actorChannels = std::vector<UActorChannel*>();
-
-    struct ActorInfo {
-        AActor* actor;
-        UActorChannel* channel;
-    };
-
-    struct ConnectionChannels {
-        UNetConnection* connection;
-        std::vector<UActorChannel*>* channels;
-    };
-
-    static std::vector<ConnectionChannels> connectionChannels = std::vector<ConnectionChannels>();
-
-    std::vector<ActorInfo> ServerReplicateActors_PrioritizeActors(UNetConnection* connection, std::vector<FNetworkObjectInfo*> ConsiderList) {
-        std::vector<ActorInfo> out = std::vector<ActorInfo>();
-
-        static int NetTag = 0;
-
-        NetTag++;
-        (*GetTickCountPtr(connection))++;
-
-        int FinalSortedCount = 0;
-        int DeletedCount = 0;
-
-        const int MaxSortedActors = ConsiderList.size();
-
-        if (MaxSortedActors > 0) {
-
-            for (FNetworkObjectInfo* actorInfo : ConsiderList) {
-                AActor* Actor = actorInfo->actor;
-
-                UActorChannel* Channel = nullptr;
-
-                /*
-                for (UActorChannel* cmpChannel : actorChannels) {
-                    if (cmpChannel->Actor != Actor)
-                        continue;
-
-                    if (cmpChannel->Connection != connection)
-                        continue;
-
-                    Channel = cmpChannel;
-                    break;
-                }
-                */
-
-                for (ConnectionChannels ccs : connectionChannels) {
-                    if (ccs.connection == connection) {
-                        for (UActorChannel* ch : *ccs.channels) {
-                            if (ch->Actor == Actor) {
-                                Channel = ch;
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-                
-
-                if (Actor->NetTag != NetTag) {
-                    Actor->NetTag = NetTag;
-                }
-
-
-                ActorInfo newActorInfo = ActorInfo();
-
-                newActorInfo.actor = Actor;
-                newActorInfo.channel = Channel;
-
-                out.push_back(newActorInfo);
-            }
-        }
-
-        return out;
-    }
-
-    static std::vector<UActorChannel*> channelsToClose = std::vector<UActorChannel*>();
-
-    int ServerReplicateActors_ProcessPrioritizedActors(UNetConnection* Connection, std::vector<ActorInfo> PriorityActors, int& OutUpdated) {
-        if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //TODO: This is both blatantly incorrect (Offset for UChildConnection, not UNetConnection), and somehow fucked up on top of that (+0x20 of the actual function). I don't wanna touch it rn, but TODO for the netcode refactor
-            return 0;
-        }
-
-        int ActorUpdatesThisConnection = 0;
-        int ActorUpdatesThisConnectionSent = 0;
-        int FinalRelevantCount = 0;
-
-        bool pcFound = false;
-
-        for (int j = 0; j < PriorityActors.size(); j++) {
-            UActorChannel* Channel = PriorityActors[j].channel;
-
-            /*
-            for (UActorChannel* cmpChannel : channelsToClose) {
-                if (Channel == cmpChannel) {
-                    
-                    
-                    continue;
-                }
-            }*/
-
-            if (!Channel || Channel->Actor) {
-                AActor* Actor = PriorityActors[j].actor;
-
-                if (Connection->ViewTarget) {
-                    FVector loc = Connection->ViewTarget->K2_GetActorLocation();
-
-                    if (!reinterpret_cast<bool(*)(AActor*, AActor*, AActor*, FVector*)>(Globals::ModuleBase + Offsets::IS_NET_RELEVANT)(Actor, Connection->PlayerController, Connection->ViewTarget, &loc) && !Actor->IsA(APawn::StaticClass()))
-                        continue;
-                }
-
-                static UClass* gamePC = nullptr;
-
-                if (!gamePC)
-                    gamePC = AOrionPlayerController_Game::StaticClass();
-
-                if (Actor != Connection->PlayerController && Actor->Class == gamePC) {
-                    continue;
-                }
-                
-                FinalRelevantCount++;
-
-                if (Channel == nullptr && Actor) {
-                    Channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + Offsets::CREATE_CHANNEL)(Connection, EChannelType::CHTYPE_Actor, true, -1); //CreateChannel
-
-                    if (Channel) {
-                        reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + Offsets::SET_CHANNEL_ACTOR)(Channel, Actor); //SetChannelActor
-
-                        bool found = false;
-                        for (ConnectionChannels ccs : connectionChannels) {
-                            if (ccs.connection == Connection) {
-                                found = true;
-                                ccs.channels->push_back(Channel);
-                            }
-                        }
-
-                        if (!found) {
-                            connectionChannels.push_back(ConnectionChannels());
-                            connectionChannels.back().channels = new std::vector<UActorChannel*>();
-                            connectionChannels.back().channels->push_back(Channel);
-                            connectionChannels.back().connection = Connection;
-                        }
-
-                        //actorChannels.push_back(Channel);
-                    }
-                }
-
-                if (Channel && Channel->Actor && !reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(Channel->Actor)) {
-                    if (reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + Offsets::IS_NET_READY)(Connection, 0)) { //IsNetReady
-                        if (reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::REPLICATE_ACTOR)(Channel)) { //ReplicateActor
-                            //std::cout << "Replicated Actor " << Actor->GetFullName() << std::endl;
-                            
-                            ActorUpdatesThisConnectionSent++;
-
-                            /*
-                            const float MinOptimalDelta = 1.0f / Actor->NetUpdateFrequency;
-                            const float MaxOptimalDelta = std::fmaxf(1.0f / Actor->MinNetUpdateFrequency, MinOptimalDelta);
-                            const float DeltaBetweenReplications = (GetWorldTimeSeconds(Globals::GetGWorld()) - PriorityActors[j].ActorInfo->LastNetReplicateTime);
-
-                            PriorityActors[j].ActorInfo->OptimalNetUpdateDelta = std::clamp(DeltaBetweenReplications * 0.7f, MinOptimalDelta, MaxOptimalDelta);
-                            PriorityActors[j].ActorInfo->LastNetReplicateTime = GetWorldTimeSeconds(Globals::GetGWorld());
-                            */
-                        }
-                        else {
-                            /*
-                            if (Channel->Actor)
-                                std::cout << "Replication Failed for " << Channel->Actor->GetFullName() << std::endl;
-                            else
-                                std::cout << "Replication Failed for nonexistent actor!" << std::endl;
-                                */
-                        }
-
-                        ActorUpdatesThisConnection++;
-                        OutUpdated++;
-                    }
-                    else {
-                        //std::cout << "Replication Failed, Forcing Net Update!" << std::endl;
-                        reinterpret_cast<void(*)(AActor*)>(Globals::ModuleBase + Offsets::FORCE_NET_UPDATE)(Actor); //AActor::ForceNetUpdate
-                    }
-
-                    if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + Offsets::IS_NET_READY)(Connection, 0)) {
-                        //std::cout << "Bailing on processing actors..." << std::endl;
-                        return j;
-                    }
-                }
-                else if(Channel && Channel->Actor) {
-                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(Channel);
-                }
-            }
-        }
     }
 
     void ServerReplicateActors() {
@@ -1057,106 +740,51 @@ namespace Networking {
             return;
         }
 
-        (*(__int64*)((__int64)GetNetDriver() + 0x280))++; //Bump ReplicationFrame
+        (*(__int64*)((__int64)GetNetDriver() + 0x280))++; // Bump ReplicationFrame
+        
+        std::vector<AActor*> actors = std::vector<AActor*>();
 
-        bool shouldTick = ServerReplicateActors_PrepConnections();
+        for (int i = 0; i < UObject::GObjects->Count(); i++) {
+            UObject* obj = UObject::GObjects->GetByIndex(i);
 
-        if (!shouldTick) {
-            return;
-        }
-
-        float ServerTickTime = 30.0f; //Hardcoded 30 tickrate, changeme if want higher tickrate
-
-        ServerTickTime = 1.0f / ServerTickTime;
-
-        std::vector<FNetworkObjectInfo*> ConsiderList = std::vector<FNetworkObjectInfo*>();
-
-        TArray<AActor*>* actors = (TArray<AActor*>*)EngineLogic::Malloc(sizeof(TArray<AActor*>), 0);
-        Globals::GetGameplayStatics()->STATIC_GetAllActorsOfClass(Globals::GetGWorld(), AActor::StaticClass(), actors);
-
-        for (int i = 0; i < actors->Count(); i++) { //UObject::GObjects->Count()
-            //UObject* obj = //UObject::GObjects->GetByIndex(i);
-
-            //if (!obj)
-                //continue;
-
-            //if (!obj->IsA(AActor::StaticClass()))
-                //continue;
-
-            AActor* actor = actors->_data[i];//(AActor*)obj;
-
-            if (!actor)
+            if (!obj)
                 continue;
 
-            if (actor->RemoteRole == ENetRole::ROLE_None) {
+            if (!obj->IsA(AActor::StaticClass())) // this fucking blows, TODO use classflags
                 continue;
-            }
 
-            //if (reinterpret_cast<UWorld * (*)(AActor*)>(Globals::ModuleBase + 0x1B89A60)(actor) != Globals::GetGWorld())
-                //continue;
+            AActor* actor = reinterpret_cast<AActor*>(obj);
 
-            //if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
-                //continue;
+            if (actor->RemoteRole == ENetRole::ROLE_None)
+                continue;
 
-            FNetworkObjectInfo* newConsider = (FNetworkObjectInfo*)EngineLogic::Malloc(sizeof(FNetworkObjectInfo), 0);
-            newConsider->actor = actor;
-            newConsider->LastNetReplicateTime = 0;
-            newConsider->NextUpdateTime = 0;
-            newConsider->OptimalNetUpdateDelta = 1.0f;
+            if (!actor->bReplicates)
+                continue;
+
+            if (actor->bActorIsBeingDestroyed)
+                continue;
+
+            if (reinterpret_cast<bool(*)(AActor*)>(Globals::ModuleBase + Offsets::IS_PENDING_KILL_PENDING)(actor))
+                continue;
+
+            UWorld* cmpWorld = reinterpret_cast<UWorld* (*)(AActor*)>(Globals::ModuleBase + Offsets::AACTOR_GET_WORLD)(actor);
+
+            if (cmpWorld != Globals::GetGWorld())
+                continue;
 
             reinterpret_cast<void(*)(AActor*, UNetDriver*)>(Globals::ModuleBase + Offsets::CALL_PRE_REPLICATION)(actor, GetNetDriver());
 
-            ConsiderList.push_back(newConsider);
+            actors.push_back(actor);
         }
-
-        //std::vector<std::vector<ActorInfo>> actorInfos = std::vector<std::vector<ActorInfo>>();
-        
-        /*
-        for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
-            actorInfos.push_back(std::vector<ActorInfo>());
-        }
-        
-        std::for_each(std::execution::par, GetNetDriver()->ClientConnections.begin(), GetNetDriver()->ClientConnections.end(), [&actorInfos, &ConsiderList](auto&& connection) {
-            (*GetTickCountPtr(connection))++;
-
-            for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
-                if (GetNetDriver()->ClientConnections[i] == connection) {
-                    for (FNetworkObjectInfo* objInfo : ConsiderList) {
-                        ActorInfo aInfo = ActorInfo();
-
-                        aInfo.actor = objInfo->actor;
-
-                        UActorChannel * Channel = nullptr;
-
-                        for (ConnectionChannels ccs : connectionChannels) {
-                            if (ccs.connection == connection) {
-                                for (UActorChannel* ch : *ccs.channels) {
-                                    if (ch->Actor == objInfo->actor) {
-                                        Channel = ch;
-                                        break;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-
-                        aInfo.channel = Channel;
-                        actorInfos[i].push_back(aInfo);
-                    }
-                    break;
-                }
-            }
-            });
-            */
 
         for (int i = 0; i < GetNetDriver()->ClientConnections.Count(); i++) {
             UNetConnection* Connection = GetNetDriver()->ClientConnections[i];
-            
-            //actorInfos[i];
 
-            AActor* OwningActor = Connection->OwningActor;
+            if (!reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + 0x1feba80)(Connection, 0)) { //TODO: This is both blatantly incorrect (Offset for UChildConnection, not UNetConnection), and somehow fucked up on top of that (+0x20 of the actual function). I don't wanna touch it rn, but TODO for the netcode refactor
+                continue;
+            }
 
-            if (!(OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open && (Connection->Driver->Time - Connection->LastReceiveTime < 1.5f))) {
+            if (!(Connection->OwningActor != nullptr && (*(EConnectionState*)((__int64)Connection + 0x124)) == USOCK_Open)) {
                 continue;
             }
 
@@ -1164,24 +792,62 @@ namespace Networking {
                 reinterpret_cast<void(*)(APlayerController*)>(Globals::ModuleBase + Offsets::SEND_CLIENT_ADJUSTMENT)(Connection->PlayerController);
             }
 
-            std::vector<ActorInfo> aInfos = ServerReplicateActors_PrioritizeActors(Connection, ConsiderList);
+            Connection->ViewTarget = Connection->PlayerController ? Connection->PlayerController->GetViewTarget() : Connection->OwningActor; // Why do this if we don't care about relevancy? Minion animations, amber, etc all rely on this being set to replicate stuff
 
-            int Updated = 0;
-
-            int LastProcessedActor = ServerReplicateActors_ProcessPrioritizedActors(Connection, aInfos, Updated);
-
-            for (int k = LastProcessedActor; k < aInfos.size(); k++) {
-                if (!aInfos[i].actor) {
+            for (AActor* actor : actors) {
+                if (actor->Class == AOrionPlayerController_Game::StaticClass() && actor != Connection->PlayerController) {
                     continue;
                 }
 
-                AActor* Actor = aInfos[i].actor;
+                if (actor->bNetTemporary) {
+                    bool shouldContinue = false;
+                    for (int i = 0; i < Connection->SentTemporaries.Count(); i++) {
+                        if (Connection->SentTemporaries[i] == actor) {
+                            shouldContinue = true;
+                            break;
+                        }
+                    }
 
-                Actor->bPendingNetUpdate = true;
+                    if (shouldContinue)
+                        continue;
+                }
+
+                UActorChannel* Channel = GetChannelForConnectionAndActor(Connection, actor);
+
+                if (!Channel && reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + Offsets::IS_NET_READY)(Connection, 0)) {
+                    //std::cout << "Opening new channel for " << actor->GetFullName() << std::endl;
+                    //std::cout << actor->bNetTemporary << std::endl;
+                    //std::cout << actor->bTearOff << std::endl;
+                    Channel = reinterpret_cast<UActorChannel * (*)(UNetConnection*, EChannelType, bool, int)>(Globals::ModuleBase + Offsets::CREATE_CHANNEL)(Connection, EChannelType::CHTYPE_Actor, true, -1);
+
+                    if (Channel) {
+                        reinterpret_cast<void(*)(UActorChannel*, AActor*)>(Globals::ModuleBase + Offsets::SET_CHANNEL_ACTOR)(Channel, actor);
+                    }
+                }
+
+                if (Channel && reinterpret_cast<bool(*)(UNetConnection*, int)>(Globals::ModuleBase + Offsets::IS_NET_READY)(Connection, 0)) {
+                    reinterpret_cast<bool(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::REPLICATE_ACTOR)(Channel);
+
+                    if (actor->bNetTemporary) {
+                        if (Connection->SentTemporaries.Max() >= Connection->SentTemporaries.Count() + 1) {
+                            Connection->SentTemporaries[Connection->SentTemporaries.Count()] = actor;
+                            Connection->SentTemporaries._count++;
+                        }
+                        else {
+                            AActor** mem = (AActor**)EngineLogic::Malloc(sizeof(AActor*) * (Connection->SentTemporaries.Count() + 10), 8);
+
+                            memcpy_s(mem, sizeof(AActor*) * (Connection->SentTemporaries.Count() + 10), Connection->SentTemporaries._data, Connection->SentTemporaries._max);
+
+                            Connection->SentTemporaries._data = mem;
+                            Connection->SentTemporaries._max = Connection->SentTemporaries.Count() + 10;
+
+                            Connection->SentTemporaries[Connection->SentTemporaries.Count()] = actor;
+                            Connection->SentTemporaries._count++;
+                        }
+                    }
+                }
             }
         }
-
-        channelsToClose.clear();
     }
 }
 
@@ -1266,7 +932,7 @@ namespace Hooking {
             TriggerAbilities(castObj);
         }
 
-        if (object->IsA(UOrionDamage::StaticClass())) {
+        if (object->Class == UOrionDamage::StaticClass() || object->Class == UOrionExecute::StaticClass()) {
             UOrionDamage* dmg = reinterpret_cast<UOrionDamage*>(object);
 
             UGameplayEffectExecutionCalculation_Execute_Params* dmgParams = reinterpret_cast<UGameplayEffectExecutionCalculation_Execute_Params*>(params);
@@ -1766,12 +1432,23 @@ namespace Hooking {
     //char __fastcall UNetDriver::NotifyActorDestroyed(UNetDriver *this, struct AActor *a2, char a3)
     void* origNotifyActorDestroyed = nullptr;
     bool NotifyActorDestroyed(UWorld* a1, AActor* a2, bool a3, bool a4) {
-        for (Networking::ConnectionChannels ccs : Networking::connectionChannels) {
-            for (UActorChannel* ch : *ccs.channels) {
-                if (ch->Actor == a2) {
-                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(ch);
-                    
-                    //Networking::channelsToClose.push_back(ch);
+        std::cout << "Destroying actor " << a2->GetFullName() << std::endl;
+
+        if (Networking::GetNetDriver() && Networking::GetNetDriver()->ClientConnections.Count() > 0) {
+            for (int i = 0; i < Networking::GetNetDriver()->ClientConnections.Count(); i++) {
+                UNetConnection* Connection = Networking::GetNetDriver()->ClientConnections[i];
+
+                UActorChannel* Channel = Networking::GetChannelForConnectionAndActor(Connection, a2);
+
+                if (Channel) {
+                    std::cout << "Destroying actor channel for: " << a2->GetFullName() << std::endl;
+
+                    Channel->bPendingDormancy = false;
+                    Channel->Dormant = false;
+
+                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(Channel);
+
+                    reinterpret_cast<void(*)(UActorChannel*, bool)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLEANUP)(Channel, false);
                 }
             }
         }

@@ -9170,8 +9170,15 @@ namespace CG
 	{
 	public:
 		class UNetConnection*                                      Connection;                                              // 0x0028(0x0008) ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic
-		bool closing;
-		unsigned char                                              UnknownData_QLYX[0x38 - sizeof(bool)];                                  // 0x0030(0x0038) MISSED OFFSET (PADDING)
+		uint8_t				OpenAcked;		// 
+		uint8_t				Closing;			// 
+		uint8_t				Dormant;			// 
+		uint8_t				bIsReplicationPaused;
+		uint8_t				OpenTemporary;	// 
+		uint8_t				Broken;			// 
+		uint8_t				bTornOff;			// 
+		uint8_t				bPendingDormancy;	// 
+		unsigned char                                              UnknownData_QLYX[0x30];                                  // 0x0030(0x0038) MISSED OFFSET (PADDING)
 
 	public:
 		static UClass* StaticClass();
@@ -13866,7 +13873,7 @@ namespace CG
 		static UClass* StaticClass();
 	};
 
-	enum EConnectionState : int
+	enum EConnectionState : uint8_t
 	{
 		USOCK_Invalid = 0, // Connection is invalid, possibly uninitialized.
 		USOCK_Closed = 1, // Connection permanently closed.
