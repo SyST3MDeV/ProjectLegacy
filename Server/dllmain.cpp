@@ -647,7 +647,6 @@ namespace GameplayAbilities {
             std::cout << "Bailed, cast failed! Ability: " << spec->Ability->GetName() << std::endl;
             reinterpret_cast<FGameplayAbilitySpec* (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle, uint16_t)>(Globals::ModuleBase + Offsets::CLIENT_ACTIVATE_ABILITY_FAILED)(component, Handle, PredictionKey.Current);
             spec->InputPressed = false;
-            
         }
 
         reinterpret_cast<void(*)(UAbilitySystemComponent*, FGameplayAbilitySpec*)>(Globals::ModuleBase + Offsets::MARK_ABILITY_SPEC_DIRTY)(component, spec);
@@ -895,6 +894,33 @@ namespace Hooking {
         //ProcInGameThread(TriggerAbilities);
     //}
 
+    //char __fastcall UNetDriver::NotifyActorDestroyed(UNetDriver *this, struct AActor *a2, char a3)
+    void* origNotifyActorDestroyed = nullptr;
+    bool NotifyActorDestroyed(UWorld* a1, AActor* a2, bool a3, bool a4) {
+        std::cout << "Destroying actor " << a2->GetFullName() << std::endl;
+
+        if (Networking::GetNetDriver() && Networking::GetNetDriver()->ClientConnections.Count() > 0) {
+            for (int i = 0; i < Networking::GetNetDriver()->ClientConnections.Count(); i++) {
+                UNetConnection* Connection = Networking::GetNetDriver()->ClientConnections[i];
+
+                UActorChannel* Channel = Networking::GetChannelForConnectionAndActor(Connection, a2);
+
+                if (Channel) {
+                    std::cout << "Destroying actor channel for: " << a2->GetFullName() << std::endl;
+
+                    Channel->bPendingDormancy = false;
+                    Channel->Dormant = false;
+
+                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(Channel);
+
+                    reinterpret_cast<void(*)(UActorChannel*, bool)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLEANUP)(Channel, false);
+                }
+            }
+        }
+
+        return reinterpret_cast<bool(*)(UWorld*, AActor*, bool, bool)>(origNotifyActorDestroyed)(a1, a2, a3, a4);
+    }
+
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
@@ -904,15 +930,22 @@ namespace Hooking {
 
         static UFunction* waitNotifyNameFunction = nullptr;
 
-        static UFunction* primeKilledFunction = nullptr;
+        static UFunction* onCharFinishedDyingFunction = nullptr;
 
-        static UFunction* primeDeliveredFunction = nullptr;
+        if (!onCharFinishedDyingFunction)
+            onCharFinishedDyingFunction = UObject::FindObject<UFunction>("Function OrionGame.OrionChar.OnFinishedDying");
 
         if (!internalServerTryActiveAbilityFunction)
             internalServerTryActiveAbilityFunction = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbility");
 
         if (!internalServerTryActiveAbilityFunctionWithEventData)
             internalServerTryActiveAbilityFunctionWithEventData = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.ServerTryActivateAbilityWithEventData");
+
+        if (function == onCharFinishedDyingFunction) {
+            AActor* objAsActor = reinterpret_cast<AActor*>(object);
+
+            NotifyActorDestroyed(Globals::GetGWorld(), objAsActor, false, false);
+        }
 
         if (function == internalServerTryActiveAbilityFunction) {
             UAbilitySystemComponent_ServerTryActivateAbility_Params* castParams = reinterpret_cast<UAbilitySystemComponent_ServerTryActivateAbility_Params*>(params);
@@ -930,6 +963,8 @@ namespace Hooking {
             GameplayAbilities::abilitiesToProc.push_back(GameplayAbilities::AbilityProcInfo(castObj));
 
             TriggerAbilities(castObj);
+
+            return nullptr;
         }
 
         if (object->Class == UOrionDamage::StaticClass() || object->Class == UOrionExecute::StaticClass()) {
@@ -1427,33 +1462,6 @@ namespace Hooking {
         spawnActorOverrideData = a2;
 
         return reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
-    }
-
-    //char __fastcall UNetDriver::NotifyActorDestroyed(UNetDriver *this, struct AActor *a2, char a3)
-    void* origNotifyActorDestroyed = nullptr;
-    bool NotifyActorDestroyed(UWorld* a1, AActor* a2, bool a3, bool a4) {
-        std::cout << "Destroying actor " << a2->GetFullName() << std::endl;
-
-        if (Networking::GetNetDriver() && Networking::GetNetDriver()->ClientConnections.Count() > 0) {
-            for (int i = 0; i < Networking::GetNetDriver()->ClientConnections.Count(); i++) {
-                UNetConnection* Connection = Networking::GetNetDriver()->ClientConnections[i];
-
-                UActorChannel* Channel = Networking::GetChannelForConnectionAndActor(Connection, a2);
-
-                if (Channel) {
-                    std::cout << "Destroying actor channel for: " << a2->GetFullName() << std::endl;
-
-                    Channel->bPendingDormancy = false;
-                    Channel->Dormant = false;
-
-                    reinterpret_cast<void(*)(UActorChannel*)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLOSE)(Channel);
-
-                    reinterpret_cast<void(*)(UActorChannel*, bool)>(Globals::ModuleBase + Offsets::UACTORCHANNEL_CLEANUP)(Channel, false);
-                }
-            }
-        }
-
-        return reinterpret_cast<bool(*)(UWorld*, AActor*, bool, bool)>(origNotifyActorDestroyed)(a1, a2, a3, a4);
     }
 
     void InitHooking() {
