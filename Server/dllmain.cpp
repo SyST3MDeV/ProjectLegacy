@@ -118,6 +118,10 @@ namespace Offsets {
     static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
     static const uintptr_t NOTIFY_ACTOR_DESTROYED = 0x1F67B20;
     static const uintptr_t TARGETING_CONFIRM = 0x29841E0;
+
+    //RHI Offsets
+    static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
+    static const uintptr_t INIT_NULL_RHI = 0x13B7EC0;
 #endif
 }
 
@@ -856,6 +860,11 @@ namespace Networking {
 namespace Hooking {
     bool procingCurrentFuncPtrs = false;
 
+    void* origInitRHI = nullptr;
+    void InitRHIHook(__int64 a1) {
+        reinterpret_cast<void(*)()>(Globals::ModuleBase + Offsets::INIT_NULL_RHI)();
+    }
+
     static std::vector<void*> FuncPtrsToProcInGameThread = std::vector<void*>();
 
     void ProcInGameThread(void* ptr) {
@@ -1185,7 +1194,6 @@ namespace Hooking {
     void* origTargetDataReplicated = nullptr;
 
     void TargetDataReplicatedHook(UAbilityTask_WaitTargetData* targetData, void* a2) {
-        std::cout << "Target Data Replicated!" << std::endl;
         return reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*, void* a2)>(origTargetDataReplicated)(targetData, a2);
     }
 
@@ -1442,13 +1450,18 @@ namespace Hooking {
 
     }
 
+    void InitHooking();
+
     void* origReturnToMainMenuToString = nullptr;
     void ReturnToMainMenuToString(__int64 a1) {
         static bool gameInit = false;
 
         if (!gameInit) {
             gameInit = true;
+
             OnGameInit();
+
+            Hooking::InitHooking();
         }
 
         return reinterpret_cast<void(*)(__int64)>(origReturnToMainMenuToString)(a1);
@@ -1513,9 +1526,28 @@ namespace Hooking {
     }
     */
 
-    void InitHooking() {
+    void* IsNetReady = nullptr;
+    bool IsNetReadyHook(__int64 something, int somethingelse) {
+        return true; // Sweet manmade horrors beyond comprehension
+    }
+
+    void InitStartupHooking() {
         MH_Initialize();
 
+        void* initRHI = (void*)(Globals::ModuleBase + Offsets::INIT_NORMAL_RHI);
+
+        MH_CreateHook(initRHI, reinterpret_cast<void*>(InitRHIHook), &origInitRHI);
+
+        MH_EnableHook(initRHI);
+
+        void* returnToMainMenuToString = (void*)(Globals::ModuleBase + Offsets::RETURN_MAIN_MENU_STRING);
+
+        MH_CreateHook(returnToMainMenuToString, reinterpret_cast<void*>(ReturnToMainMenuToString), &origReturnToMainMenuToString);
+
+        MH_EnableHook(returnToMainMenuToString);
+    }
+
+    void InitHooking() {
         void* ProcessEventHookLocal = (void*)(Globals::ModuleBase + Offsets::PROCESSEVENT);
 
         MH_CreateHook(ProcessEventHookLocal, reinterpret_cast<void*>(ProcessEventHook), &origProcessEvent);
@@ -1676,12 +1708,6 @@ namespace Hooking {
 
         MH_EnableHook(fillAccountData);
 
-        void* returnToMainMenuToString = (void*)(Globals::ModuleBase + Offsets::RETURN_MAIN_MENU_STRING);
-
-        MH_CreateHook(returnToMainMenuToString, reinterpret_cast<void*>(ReturnToMainMenuToString), &origReturnToMainMenuToString);
-
-        MH_EnableHook(returnToMainMenuToString);
-
         void* setMatchEndSequence = (void*)(Globals::ModuleBase + Offsets::SET_END_SEQUENCE);
 
         MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(SetEndSequenceHook), &origSetEndSequence);
@@ -1711,6 +1737,12 @@ namespace Hooking {
         MH_CreateHook(notifyActorDestroyed, reinterpret_cast<void*>(NotifyActorDestroyed), &origNotifyActorDestroyed);
 
         MH_EnableHook(notifyActorDestroyed);
+
+        void* isNetReady = (void*)(Globals::ModuleBase + Offsets::IS_NET_READY);
+
+        MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
+
+        MH_EnableHook(isNetReady);
     }
 }
 
@@ -1732,7 +1764,9 @@ void OnMatchInit() {
 }
 
 void OnGameInit() {
-    //std::cout << "Enabling game console..." << std::endl;
+    CG::InitSdk();
+
+    std::cout << "Enabling game console..." << std::endl;
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
@@ -1744,17 +1778,15 @@ void ForceStartMatch() {
 }
 
 void Main() {
-    CG::InitSdk();
-
     InitConsole();
 
-    Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe");
+    Globals::ModuleBase = (uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping-Server.exe");
 
-    Hooking::InitHooking();
+    Hooking::InitStartupHooking();
 
     //OnGameInit();
 
-    Sleep(1 * 1000 * 1000 * 1000);
+    Sleep(1 * 1000 * 1000 * 1000); // When this thread dies, so does the game. CBA to figure it out, so here we are
 
     while (true) {
 

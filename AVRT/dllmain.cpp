@@ -1,54 +1,68 @@
 // dllmain.cpp : Defines the entry point for the DLL application.
 #include "pch.h"
 #include <thread>
-#include "powerbase.h"
 #include <iostream>
+#include "dxgi.h"
+#include "dxgi1_3.h"
+#include "dxgi1_6.h"
 
-#pragma comment(lib, "PowrProf.lib")
+#pragma comment(lib, "DXGI.lib")
 
-#include "MinHook/include/MinHook.h"
+// At global scope - add these declarations
+HMODULE g_hOriginalDXGI = NULL;
+typedef HRESULT(WINAPI* fpCreateDXGIFactory)(REFIID, void**);
+typedef HRESULT(WINAPI* fpCreateDXGIFactory1)(REFIID, void**);
+typedef HRESULT(WINAPI* fpCreateDXGIFactory2)(UINT, REFIID, void**);
 
-#pragma comment(lib, "MinHook/lib/libMinHook-x64-v141-mt.lib")
+fpCreateDXGIFactory g_pOrigCreateDXGIFactory = NULL;
+fpCreateDXGIFactory1 g_pOrigCreateDXGIFactory1 = NULL;
+fpCreateDXGIFactory2 g_pOrigCreateDXGIFactory2 = NULL;
 
-#define IS_SERVER false
+void InitializeOriginalFunctions() {
+    char systemPath[MAX_PATH];
+    GetSystemDirectoryA(systemPath, MAX_PATH);
 
-namespace Offsets {
-    //Hooking Offsets
-    static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
-    static const uintptr_t INIT_NULL_RHI = 0x13B7EC0;
+    char dxgiPath[MAX_PATH];
+    sprintf_s(dxgiPath, MAX_PATH, "%s\\dxgi.dll", systemPath);
+
+    g_hOriginalDXGI = LoadLibraryA(dxgiPath);
+    if (g_hOriginalDXGI) {
+        g_pOrigCreateDXGIFactory = (fpCreateDXGIFactory)GetProcAddress(g_hOriginalDXGI, "CreateDXGIFactory");
+        g_pOrigCreateDXGIFactory1 = (fpCreateDXGIFactory1)GetProcAddress(g_hOriginalDXGI, "CreateDXGIFactory1");
+        g_pOrigCreateDXGIFactory2 = (fpCreateDXGIFactory2)GetProcAddress(g_hOriginalDXGI, "CreateDXGIFactory2");
+    }
 }
 
-extern "C" LONG __stdcall CallNtPowerInformationFake(POWER_INFORMATION_LEVEL InformationLevel, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength) {
-    return CallNtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+extern "C" HRESULT __stdcall CreateDXGIFactoryFake(REFIID riid, void** ppFactory) {
+    if (g_pOrigCreateDXGIFactory) {
+        return g_pOrigCreateDXGIFactory(riid, ppFactory);
+    }
+    return E_FAIL;
 }
 
-extern "C" POWER_PLATFORM_ROLE PowerDeterminePlatformRoleFake() {
-    return PlatformRoleDesktop;
+extern "C" HRESULT __stdcall CreateDXGIFactory1Fake(REFIID riid, void** ppFactory) {
+    if (g_pOrigCreateDXGIFactory1) {
+        return g_pOrigCreateDXGIFactory1(riid, ppFactory);
+    }
+    return E_FAIL;
 }
 
-void* origInitRHI = nullptr;
-void InitRHIHook(__int64 a1) {
-    reinterpret_cast<void(*)()>((uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe") + Offsets::INIT_NULL_RHI)();
+extern "C" HRESULT __stdcall CreateDXGIFactory2Fake(UINT Flags, REFIID riid, void** ppFactory) {
+    if (g_pOrigCreateDXGIFactory2) {
+        return g_pOrigCreateDXGIFactory2(Flags, riid, ppFactory);
+    }
+    return E_FAIL;
 }
 
-void LoadLibraryThread() {
-#if IS_SERVER
-    MH_Initialize();
+void Main() {
+    InitializeOriginalFunctions();
 
-    void* initRHI = (void*)((uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe") + Offsets::INIT_NORMAL_RHI);
-
-    MH_CreateHook(initRHI, reinterpret_cast<void*>(InitRHIHook), &origInitRHI);
-
-    MH_EnableHook(initRHI);
-
-    Sleep(15 * 1000);
-
-    LoadLibraryA("Server.dll");
-#else
-    Sleep(60 * 1000);
-
-    LoadLibraryA("Client.dll");
-#endif
+    if ((uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping.exe")) {
+        LoadLibraryA("Client.dll");
+    }
+    else if((uintptr_t)GetModuleHandleA("OrionClient-Win64-Shipping-Server.exe")) {
+        LoadLibraryA("Server.dll");
+    }
 }
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -57,8 +71,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
                      )
 {
     if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
-        std::thread t(LoadLibraryThread);
-        t.detach();
+        Main();
     }
     return TRUE;
 }

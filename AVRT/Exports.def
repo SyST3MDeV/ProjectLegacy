@@ -1,3 +1,4 @@
 EXPORTS
-	CallNtPowerInformation = CallNtPowerInformationFake
-	PowerDeterminePlatformRole = PowerDeterminePlatformRoleFake
+	CreateDXGIFactory = CreateDXGIFactoryFake
+	CreateDXGIFactory1 = CreateDXGIFactory1Fake
+	CreateDXGIFactory2 = CreateDXGIFactory2Fake

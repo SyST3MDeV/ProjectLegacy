@@ -36,7 +36,7 @@ namespace CG
 	 */
 	bool InitSdk()
 	{
-		return InitSdk(L"OrionClient-Win64-Shipping.exe", 0x4A895A0, 0x4A80308, 0x4B7A3B0);
+		return InitSdk(L"OrionClient-Win64-Shipping-Server.exe", 0x4A895A0, 0x4A80308, 0x4B7A3B0);
 	}
 
 	// --------------------------------------------------

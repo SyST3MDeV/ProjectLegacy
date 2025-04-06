@@ -70,6 +70,7 @@ namespace Offsets {
     static const uintptr_t PLAYROOT_ON_ACTIVATED = 0x814BD0;
     static const uintptr_t READY_BUTTON_CLICKED = 0x80E740;
     static const uintptr_t TARGETING_CONFIRM = 0x294CAE0;
+    static const uintptr_t IS_NET_READY = 0x1FEBA80;
 #endif
 }
 
@@ -548,6 +549,11 @@ namespace Hooking {
 
         return ret;
     }
+    
+    void* IsNetReady = nullptr;
+    bool IsNetReadyHook(__int64 something, int somethingelse) {
+        return true; // Sweet manmade horrors beyond comprehension
+    }
 
     void InitHooking() {
         MH_Initialize();
@@ -677,6 +683,12 @@ namespace Hooking {
         MH_CreateHook(targetingConfirmImpl, reinterpret_cast<void*>(TargetingConfirmHook), &origTargetingConfirm);
 
         //MH_EnableHook(targetingConfirmImpl);
+
+        void* isNetReady = (void*)(Globals::ModuleBase + Offsets::IS_NET_READY);
+
+        MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
+
+        MH_EnableHook(isNetReady);
 
         //
 
