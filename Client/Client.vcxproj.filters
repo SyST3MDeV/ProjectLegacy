@@ -65,5 +65,8 @@
     <ClCompile Include="SDK\UMG_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="SDK\FrontEnd_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

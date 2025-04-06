@@ -3,7 +3,8 @@
  * Version: v34
  */
 
-#include "pch.h"
+
+#include "../SDK.h"
 
 namespace CG
 {

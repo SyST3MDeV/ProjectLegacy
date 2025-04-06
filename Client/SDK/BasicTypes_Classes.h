@@ -321,7 +321,7 @@ namespace CG
 	 */
 	class FText
 	{
-	private:
+	public:
 		FTextData*                                                 Data;                                                    // 0x0000(0x0000)
 		uint8_t                                                    UnknownData[0x10];                                       // 0x0000(0x0000)
 

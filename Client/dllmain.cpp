@@ -39,6 +39,9 @@ namespace Offsets {
     static const uintptr_t MALLOC = 0xDFB9F0;
     static const uintptr_t FREE = 0xDEEA90;
 
+    //Frontend Offsets
+    static const uintptr_t CREATE_FTEXT = 0xE2B410;
+
     //Core Game Offsets
     static const uintptr_t SET_UI_STATE = 0x7DDBC0;
     
@@ -64,6 +67,9 @@ namespace Offsets {
     static const uintptr_t PLAYROOT_UPDATE = 0x8293C0;
     static const uintptr_t SHOULD_SHOW_NEW_USER_VIDEO = 0x8909B0;
     static const uintptr_t SHOW_VETERANCY_SURVEY = 0x891860;
+    static const uintptr_t PLAYROOT_ON_ACTIVATED = 0x814BD0;
+    static const uintptr_t READY_BUTTON_CLICKED = 0x80E740;
+    static const uintptr_t TARGETING_CONFIRM = 0x294CAE0;
 #endif
 }
 
@@ -139,6 +145,10 @@ namespace EngineLogic {
         engine->GameViewport->ViewportConsole = reinterpret_cast<CG::UConsole*>(NewObject);
     }
 
+    __int64 Free(void* ptr) {
+        return reinterpret_cast<__int64(__thiscall*)(void*)>(Globals::ModuleBase + Offsets::FREE)(ptr);
+    }
+
     void ExecuteConsoleCommand(const wchar_t* cmd) {
         static UKismetSystemLibrary* systemLibrary = nullptr;
 
@@ -192,22 +202,71 @@ namespace Frontend{
         Globals::GetLocalPlayerController<AOrionPlayerController_Base>()->SetName(name.c_str());
     }
 
+    void EnterMinimalMenuMode(UFrontEnd_C* menu) {
+        NukeUIElement(menu->BoostStatusIcon);
+        NukeUIElement(menu->LobbyChatWidget_78);
+        NukeUIElement(menu->FrontEndParty);
+        NukeUIElement(menu->EcosystemRoot->SelectableIconButtonFriends);
+        NukeUIElement(menu->Home->AccountRewards);
+        NukeUIElement(menu->Home->CraftIterationButton);
+        NukeUIElement(menu->Home->HeroRewards);
+        NukeUIElement(menu->Home->TodaysRewards);
+        NukeUIElement(menu->Home->TotalTakeDowns);
+        NukeUIElement(menu->Home->WeeklyQuests);
+
+        for (int i = 2; i < menu->TabListTabs->RegisteredTabsByID.Data.Count(); i++) {
+            menu->TabListTabs->SetTabEnabled(menu->TabListTabs->RegisteredTabsByID.Data[i].Value.First, false);
+        }
+    }
+
+    void OnSwitchedToHome(UFrontEnd_C* FrontEnd) {
+        NukeUIElement(FrontEnd->BoostStatusIcon);
+        NukeUIElement(FrontEnd->LobbyChatWidget_78);
+        NukeUIElement(FrontEnd->FrontEndParty);
+        NukeUIElement(FrontEnd->EcosystemRoot->SelectableIconButtonFriends);
+        NukeUIElement(FrontEnd->Home->AccountRewards);
+        NukeUIElement(FrontEnd->Home->CraftIterationButton);
+        NukeUIElement(FrontEnd->Home->HeroRewards);
+        NukeUIElement(FrontEnd->Home->TodaysRewards);
+        NukeUIElement(FrontEnd->Home->TotalTakeDowns);
+        NukeUIElement(FrontEnd->Home->WeeklyQuests);
+    }
+
+    FString* CreateFString(const wchar_t* str) {
+        FString* fstring = (FString*)EngineLogic::Malloc(sizeof(FString), 0);
+
+        *fstring = FString(str);
+
+        return fstring;
+    }
+
+    FText* CreateFTextFromFString(FString* str) {
+        FText* text = (FText*)EngineLogic::Malloc(sizeof(FText), 0);
+
+        return reinterpret_cast<FText* (*)(FText*, FString*)>(Globals::ModuleBase + Offsets::CREATE_FTEXT)(text, str);
+    }
+
+    void OnSwitchedToPlay(UOrionPlayRoot* PlayRoot) {
+        NukeUIElement(PlayRoot->Button_Tutorial_1v1);
+        NukeUIElement(PlayRoot->Button_MatchmakingSettings);
+        NukeUIElement(PlayRoot->Button_PvP);
+        NukeUIElement(PlayRoot->Button_Solo);
+
+        PlayRoot->Button_Coop->Text_Title->SetText(*CreateFTextFromFString(CreateFString(L"Project Legacy Playtest")));
+    }
+
+    void OnGameTypeSelected(UOrionPlayRoot* PlayRoot) {
+        PlayRoot->Button_Ready->EnableButton();
+    }
+
     void SetupFrontend() {
         SetUserName(L"gwog :3");
-        
-        for (UOrionPlayRoot* root : SDKUtils::GetAllObjectsOfType< UOrionPlayRoot>()) {
-            NukeUIElement(root->Button_MatchmakingSettings);
 
-            NukeUIElement(root->Button_PvP);
+        EnterMinimalMenuMode(SDKUtils::GetLastOfType< UFrontEnd_C>());
+    }
 
-            NukeUIElement(root->Button_Coop);
-
-            NukeUIElement(root->Button_Tutorial_1v1);
-
-            if (root->Button_Ready) {
-                root->Button_Ready->EnableButton();
-            }
-        }
+    void ConnectToMatch() {
+        EngineLogic::ExecuteConsoleCommand(L"open 127.0.0.1?displayname=gwog :3?hero=RiftMage?team=1");
     }
 }
 
@@ -223,6 +282,10 @@ namespace Hooking {
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
+        if (function->GetFullName().contains("WaitTargetData")) {
+            std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
+        }
+
         if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
             procingCurrentFuncPtrs = true;
 
@@ -242,9 +305,31 @@ namespace Hooking {
         if(!gameplayCueFunc)
             gameplayCueFunc = UObject::FindObject<UFunction>("Function GameplayAbilities.AbilitySystemComponent.NetMulticast_InvokeGameplayCueExecuted_WithParams");
 
-        //if (object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) {
-            //std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
-        //}
+        static UFunction* handleTabButtonSelectedFunction = nullptr;
+
+        if (!handleTabButtonSelectedFunction)
+            handleTabButtonSelectedFunction = UObject::FindObject<UFunction>("Function OrionGame.OrionTabListWidget.HandleTabButtonSelected");
+
+        if (function == handleTabButtonSelectedFunction) {
+            UOrionTabListWidget_HandleTabButtonSelected_Params* parms = reinterpret_cast<UOrionTabListWidget_HandleTabButtonSelected_Params*>(params);
+
+            if (parms->ButtonIndex == 0) {
+                if (object->Outer && object->Outer->Outer && object->Outer->Outer->IsA(UFrontEnd_C::StaticClass())) {
+                    Frontend::OnSwitchedToHome(reinterpret_cast<UFrontEnd_C*>(object->Outer->Outer)); // trust the tech
+                }
+            }
+        }
+
+        static UFunction* onGameTypeSelectedFunction = nullptr;
+
+        if (!onGameTypeSelectedFunction)
+            onGameTypeSelectedFunction = UObject::FindObject<UFunction>("Function OrionGame.OrionPlayRoot.HandleGameTypeSelected");
+
+        if (function == onGameTypeSelectedFunction) {
+            UOrionPlayRoot_HandleGameTypeSelected_Params* parms = reinterpret_cast<UOrionPlayRoot_HandleGameTypeSelected_Params*>(params);
+
+            Frontend::OnGameTypeSelected(reinterpret_cast<UOrionPlayRoot*>(object));
+        }
 
         if (function == gameplayCueFunc) {
             UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params* castParams = reinterpret_cast<UAbilitySystemComponent_NetMulticast_InvokeGameplayCueExecuted_WithParams_Params*>(params);
@@ -289,7 +374,7 @@ namespace Hooking {
             }
         }
 
-        if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) {
+        if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) { // TODO: This sucks, find a better way to do this
             if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->IsA(AOrionPlayerState_Game::StaticClass())) {
                 if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent) {
                     AOrionTargetingMode* castObj = (AOrionTargetingMode*)object;
@@ -298,14 +383,11 @@ namespace Hooking {
 
                     //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(SDKUtils::GetLastOfType< UOrionAbilityTask_StartTargeting>());
 
-                    /*
-                    for (UOrionAbilityTask_StartTargeting* target : UObject::FindObjects< UOrionAbilityTask_StartTargeting>()) {
-                        if(target->GetFullName().find("Default") == std::string::npos)
-                            reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(target);
-                    }
-                    */
-
                     castObj->OnTargetingModeActivate();
+
+                    UOrionAbilityTask_StartTargeting* task = SDKUtils::GetLastOfType<UOrionAbilityTask_StartTargeting>();
+
+                    std::cout << reinterpret_cast<bool(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x296FC00)(task) << std::endl;
 
                     Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent->ServerTryActivateAbilityWithEventData(FGameplayAbilitySpecHandle(), false, FPredictionKey(), FGameplayEventData());
 
@@ -316,6 +398,7 @@ namespace Hooking {
 
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
     }
+    
 
     void* origInitializeMCPProfile = nullptr;
 
@@ -440,6 +523,32 @@ namespace Hooking {
         return;
     }
 
+    void* origPlayRootActivated = nullptr;
+    void PlayRootActivatedHook(UOrionPlayRoot* PlayRoot) {
+        reinterpret_cast<void(*)(UOrionPlayRoot*)>(origPlayRootActivated)(PlayRoot);
+
+        Frontend::OnSwitchedToPlay(PlayRoot);
+    }
+
+    void* origPlayButtonClicked = nullptr;
+    void HandlePlayButtonClicked(UOrionPlayRoot* PlayRoot, bool a2) {
+        if (a2) {
+            Frontend::ConnectToMatch();
+        }
+
+        reinterpret_cast<void(*)(UOrionPlayRoot*, bool)>(origPlayButtonClicked)(PlayRoot, a2);
+    }
+
+    void* origTargetingConfirm = nullptr;
+    __int64 TargetingConfirmHook(AGameplayAbilityTargetActor* a1, void* a2) {
+
+        std::cout << "STARTED TARGETING" << std::endl;
+
+        __int64 ret = reinterpret_cast<__int64(*)(AGameplayAbilityTargetActor*, void*)>(origTargetingConfirm)(a1, a2);
+
+        return ret;
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -550,6 +659,28 @@ namespace Hooking {
         MH_CreateHook(showVeterancy, reinterpret_cast<void*>(ShowVeterancySurvey), &origShowVeterancySurvey);
 
         MH_EnableHook(showVeterancy);
+
+        void* playRootRefreshed = (void*)(Globals::ModuleBase + Offsets::PLAYROOT_ON_ACTIVATED);
+
+        MH_CreateHook(playRootRefreshed, reinterpret_cast<void*>(PlayRootActivatedHook), &origPlayRootActivated);
+
+        MH_EnableHook(playRootRefreshed);
+
+        void* playButtonClicked = (void*)(Globals::ModuleBase + Offsets::READY_BUTTON_CLICKED);
+
+        MH_CreateHook(playButtonClicked, reinterpret_cast<void*>(HandlePlayButtonClicked), &origPlayButtonClicked);
+
+        MH_EnableHook(playButtonClicked);
+
+        void* targetingConfirmImpl = (void*)(Globals::ModuleBase + Offsets::TARGETING_CONFIRM);
+
+        MH_CreateHook(targetingConfirmImpl, reinterpret_cast<void*>(TargetingConfirmHook), &origTargetingConfirm);
+
+        //MH_EnableHook(targetingConfirmImpl);
+
+        //
+
+        //814BD0
 
         //891860
 
