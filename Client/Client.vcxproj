@@ -95,6 +95,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='v34|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='v34|Win32'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="SDK\BackgroundDisplay_Package.cpp" />
     <ClCompile Include="SDK\BasicTypes_Package.cpp" />
     <ClCompile Include="SDK\CoreUObject_Package.cpp" />
     <ClCompile Include="SDK\Engine_Package.cpp" />

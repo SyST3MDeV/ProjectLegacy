@@ -112,7 +112,7 @@ namespace Offsets {
     static const uintptr_t IS_CARD_IN_DECK_2 = 0x4B81B0;
     static const uintptr_t FILL_ACCOUNT_DATA = 0x2B82C70;
     static const uintptr_t RETURN_MAIN_MENU_STRING = 0x5FEF80;
-    static const uintptr_t SET_END_SEQUENCE = 0x498FF0;
+    static const uintptr_t START_PLAY = 0x1E75530;
     static const uintptr_t UCHANNEL_CLEANUP = 0x1DE59D0;
     static const uintptr_t SPAWN_BOT = 0x32CBA0;
     static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
@@ -1467,9 +1467,11 @@ namespace Hooking {
         return reinterpret_cast<void(*)(__int64)>(origReturnToMainMenuToString)(a1);
     }
 
-    void* origSetEndSequence = nullptr;
+    void* origStartPlay = nullptr;
     //void __fastcall AOrionGameState_MOBA::SetEndMatchSequence(AOrionGameState_MOBA *this, struct ULevelSequencePlayer *a2)
-    void SetEndSequenceHook(AOrionGameState_MOBA* a1, ULevelSequencePlayer* a2) {
+    __int64 StartPlayHook(AGameMode* a1) {
+        __int64 ret = reinterpret_cast<__int64(*)(AGameMode*)>(origStartPlay)(a1);
+
         static bool matchInit = false;
 
         if (!matchInit) {
@@ -1477,7 +1479,7 @@ namespace Hooking {
             ProcInGameThread(OnMatchInit);
         }
 
-        return reinterpret_cast<void(*)(AOrionGameState_MOBA*, ULevelSequencePlayer*)>(origSetEndSequence)(a1, a2);
+        return ret;
     }
 
     void* origTArrayRemoveSound = nullptr;
@@ -1708,9 +1710,9 @@ namespace Hooking {
 
         MH_EnableHook(fillAccountData);
 
-        void* setMatchEndSequence = (void*)(Globals::ModuleBase + Offsets::SET_END_SEQUENCE);
+        void* setMatchEndSequence = (void*)(Globals::ModuleBase + Offsets::START_PLAY);
 
-        MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(SetEndSequenceHook), &origSetEndSequence);
+        MH_CreateHook(setMatchEndSequence, reinterpret_cast<void*>(StartPlayHook), &origStartPlay);
 
         MH_EnableHook(setMatchEndSequence);
 
@@ -1770,7 +1772,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Agora_P", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
+    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
 }
 
 void ForceStartMatch() {

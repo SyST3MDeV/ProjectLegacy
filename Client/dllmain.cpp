@@ -71,6 +71,7 @@ namespace Offsets {
     static const uintptr_t READY_BUTTON_CLICKED = 0x80E740;
     static const uintptr_t TARGETING_CONFIRM = 0x294CAE0;
     static const uintptr_t IS_NET_READY = 0x1FEBA80;
+    static const uintptr_t FILL_ACCOUNT_LEVEL_INFO = 0x2B67E00;
 #endif
 }
 
@@ -464,6 +465,11 @@ namespace Hooking {
         }
     }
 
+    void* origFillAccountLevelData2 = nullptr;
+    void FillAccountDataHook2(UPostGameContext* a1) {
+
+    }
+
     void* origFillAccountLevelData = nullptr;
     void FillAccountDataHook(UPostGameContext* a1) {
 
@@ -689,6 +695,12 @@ namespace Hooking {
         MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
 
         MH_EnableHook(isNetReady);
+
+        void* fillAccountLevel = (void*)(Globals::ModuleBase + Offsets::FILL_ACCOUNT_LEVEL_INFO);
+
+        MH_CreateHook(fillAccountLevel, reinterpret_cast<void*>(FillAccountDataHook2), &origFillAccountLevelData2);
+
+        MH_EnableHook(fillAccountLevel);
 
         //
 
