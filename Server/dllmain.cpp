@@ -48,6 +48,8 @@ namespace Offsets {
 
     //Core Game Offsets
     static const uintptr_t SET_UI_STATE = 0x7DDBC0;
+    static const uintptr_t START_DRAFT = 0x47F4A0;
+    static const uintptr_t DRAFT_HANDLE_MATCH_COUNTDOWN = 0x4802B0;
 
     //Damage Calculation Offsets
     static const uintptr_t GET_DAMAGE_STATICS = 0x3E6C60;
@@ -91,6 +93,7 @@ namespace Offsets {
     static const uintptr_t STATMANAGER_CRASH = 0x37BF70;
     static const uintptr_t NETDRIVER_TICKFLUSH = 0x1ffc780;
     static const uintptr_t GAMEMODE_MOBA_POSTLOGIN = 0x48F1E0;
+    static const uintptr_t GAMEMODE_DRAFTLOBBY_POSTLOGIN = 0x48F070;
     static const uintptr_t NOTIFY_ACCEPTING_CONNECTION = 0x2314B80;
     static const uintptr_t NOTIFY_ACCEPTED_CONNECTION = 0x2314710;
     static const uintptr_t NOTIFY_ACCEPTING_CHANNEL = 0x2314890;
@@ -118,6 +121,13 @@ namespace Offsets {
     static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
     static const uintptr_t NOTIFY_ACTOR_DESTROYED = 0x1F67B20;
     static const uintptr_t TARGETING_CONFIRM = 0x29841E0;
+    static const uintptr_t GET_RAW_PATH = 0x4F6920;
+    static const uintptr_t SETUP_PLAYER_DRAFT = 0x486250;
+    static const uintptr_t SYNC_MCP = 0x64FE30;
+    static const uintptr_t CHECK_DUPLICATE_PLAYER = 0x5362E0;
+    static const uintptr_t GAME_SESSION_POST_LOGIN = 0x553B40;
+    static const uintptr_t GET_PLAYERS_ON_TEAM = 0x5438A0;
+    static const uintptr_t GET_EXPECTED_PLAYERS = 0x424B10;
 
     //RHI Offsets
     static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
@@ -241,8 +251,15 @@ namespace EngineLogic {
 }
 
 namespace GameLogic {
+    void StartDraft() {
+        *((uint8_t*)Globals::GetGameMode<AOrionGameMode_DraftLobby>() + 0x488) = 0;
+        reinterpret_cast<void(*)(AOrionGameMode_DraftLobby*)>(Globals::ModuleBase + Offsets::START_DRAFT)(Globals::GetGameMode<AOrionGameMode_DraftLobby>());
+        reinterpret_cast<void(*)(AOrionGameMode_DraftLobby*)>(Globals::ModuleBase + Offsets::DRAFT_HANDLE_MATCH_COUNTDOWN)(Globals::GetGameMode<AOrionGameMode_DraftLobby>());
+        //
+    }
+
     void SetupTeams() {
-        AOrionGameState_MOBA* gameState = Globals::GetGameState<AOrionGameState_MOBA>();
+        AOrionGameState_Base* gameState = Globals::GetGameState<AOrionGameState_Base>();
 
         gameState->Teams._data = reinterpret_cast<AOrionTeamInfo**>(EngineLogic::Malloc(sizeof(AOrionTeamInfo*) * 3, 0));
         gameState->Teams._count = 4;
@@ -1042,6 +1059,7 @@ namespace Hooking {
 
     void GameModeMOBAPostLogin(AOrionGameMode_MOBA* gamemode, AOrionPlayerController_Game* controller) {
         if (controller != Globals::GetLocalPlayerController< AOrionPlayerController_Game>()) {
+            /*
             PlayerInfo info;
 
             for (auto pair : playerInfoArray) {
@@ -1106,6 +1124,7 @@ namespace Hooking {
 
             if (numPlayers >= Settings::NUM_PLAYERS_TO_START)
                 Globals::shouldStartMatch = true;
+                */
         }
         else {
             reinterpret_cast<void(*)(AOrionGameMode_MOBA * gamemode, AOrionPlayerController_Game * controller)>(origGameModeMOBAPostLogin)(gamemode, controller);
@@ -1226,7 +1245,8 @@ namespace Hooking {
         static bool matchStarted = false;
         if(GetAsyncKeyState(VK_F7) && !matchStarted) {
             matchStarted = true;
-            GameLogic::StartMatch();
+            //GameLogic::StartMatch();
+            GameLogic::StartDraft();
         }
 
         static bool abilitySwapDone = false;
@@ -1256,7 +1276,7 @@ namespace Hooking {
             }
         }
 
-        static bool didTheFunny = false;
+        static bool didTheFunny = true;
         if (GetAsyncKeyState(VK_F6) && !didTheFunny) {
             didTheFunny = true;
             
@@ -1533,6 +1553,50 @@ namespace Hooking {
         return true; // Sweet manmade horrors beyond comprehension
     }
 
+    void* GetRawPath = nullptr;
+    bool GetRawPathHook(int PlaylistId, FString* outStr) {
+        outStr->_data = (wchar_t*)EngineLogic::Malloc(sizeof(L"/Game/Maps/Agora/Agora8/Agora_P"), 0);
+        memcpy_s(outStr->_data, sizeof(L"/Game/Maps/Agora/Agora8/Agora_P"), L"/Game/Maps/Agora/Agora8/Agora_P", sizeof(L"/Game/Maps/Agora/Agora8/Agora_P"));
+        return true;
+    }
+
+    void* InitPlayerFromMatchmakingData = nullptr;
+    bool InitPlayerFromMatchmakingDataHook(AOrionGameMode_DraftLobby* a1, AOrionPlayerController_Base* a2, const FOrionTBMemberInfo* a3, AOrionTeamInfo* a4) {
+        return true;
+    }
+
+    void* SyncMCP = nullptr;
+    void SyncMCPHook(APlayerController* a1) {
+        return;
+    }
+
+    void* CheckForDuplicatePlayer = nullptr;
+    APlayerController* CheckForDuplicatePlayerHook(AOrionGameSession* a1, FUniqueNetIdRepl* a2) {
+        return nullptr;
+    }
+
+    void* GameSessionPostLogin = nullptr;
+    bool GameSessionPostLoginHook(AOrionGameSession* a1, FUniqueNetIdRepl* a2) {
+        return true;
+    }
+
+    void* GameModeDraftLobbyPostLogin = nullptr;
+    void GameModeDraftLobbyPostLoginHook(AOrionGameMode_DraftLobby* a1, AOrionPlayerController_Game* a2) {
+        reinterpret_cast<void(*)(AOrionGameMode_DraftLobby * a1, AOrionPlayerController_Game * a2)>(GameModeDraftLobbyPostLogin)(a1, a2);
+
+        GameLogic::AddControllerToTeam(a2, EOrionTeam::TeamRed);
+    }
+
+    void* GetPlayersOnTeam = nullptr;
+    int GetPlayersOnTeamHook(AOrionGameSession* a1) {
+        return 1;
+    }
+
+    void* GetExpectedPlayers = nullptr;
+    char GetExpectedPlayersHook(AOrionGameMode_Base* a1) {
+        return true;
+    }
+
     void InitStartupHooking() {
         MH_Initialize();
 
@@ -1745,6 +1809,56 @@ namespace Hooking {
         MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
 
         MH_EnableHook(isNetReady);
+
+        void* getRawPath = (void*)(Globals::ModuleBase + Offsets::GET_RAW_PATH);
+
+        MH_CreateHook(getRawPath, reinterpret_cast<void*>(GetRawPathHook), &GetRawPath);
+
+        MH_EnableHook(getRawPath);
+
+        void* initPlayerDraft = (void*)(Globals::ModuleBase + Offsets::SETUP_PLAYER_DRAFT);
+
+        MH_CreateHook(initPlayerDraft, reinterpret_cast<void*>(InitPlayerFromMatchmakingDataHook), &InitPlayerFromMatchmakingData);
+
+        MH_EnableHook(initPlayerDraft);
+
+        void* syncMCP = (void*)(Globals::ModuleBase + Offsets::SYNC_MCP);
+
+        MH_CreateHook(syncMCP, reinterpret_cast<void*>(SyncMCPHook), &SyncMCP);
+
+        MH_EnableHook(syncMCP);
+
+        void* checkDuplicatePlayer = (void*)(Globals::ModuleBase + Offsets::CHECK_DUPLICATE_PLAYER);
+
+        MH_CreateHook(checkDuplicatePlayer, reinterpret_cast<void*>(CheckForDuplicatePlayerHook), &CheckForDuplicatePlayer);
+
+        MH_EnableHook(checkDuplicatePlayer);
+
+        void* gameSessionPostLogin = (void*)(Globals::ModuleBase + Offsets::GAME_SESSION_POST_LOGIN);
+
+        MH_CreateHook(gameSessionPostLogin, reinterpret_cast<void*>(GameSessionPostLoginHook), &GameSessionPostLogin);
+
+        MH_EnableHook(gameSessionPostLogin);
+
+        void* gameModeLobbyPostLogin = (void*)(Globals::ModuleBase + Offsets::GAMEMODE_DRAFTLOBBY_POSTLOGIN);
+
+        MH_CreateHook(gameModeLobbyPostLogin, reinterpret_cast<void*>(GameModeDraftLobbyPostLoginHook), &GameModeDraftLobbyPostLogin);
+
+        MH_EnableHook(gameModeLobbyPostLogin);
+
+        void* getPlayersOnTeam = (void*)(Globals::ModuleBase + Offsets::GET_PLAYERS_ON_TEAM);
+
+        MH_CreateHook(getPlayersOnTeam, reinterpret_cast<void*>(GetPlayersOnTeamHook), &GetPlayersOnTeam);
+
+        MH_EnableHook(getPlayersOnTeam);
+
+        void* getExpectedPlayers = (void*)(Globals::ModuleBase + Offsets::GET_EXPECTED_PLAYERS);
+
+        MH_CreateHook(getExpectedPlayers, reinterpret_cast<void*>(GetExpectedPlayersHook), &GetExpectedPlayers);
+
+        MH_EnableHook(getExpectedPlayers);
+
+        //
     }
 }
 
@@ -1772,7 +1886,7 @@ void OnGameInit() {
     EngineLogic::EnableGameConsole();
 
     std::cout << "Loading map..." << std::endl;
-    EngineLogic::LoadMap(L"Origin", L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C"); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
+    EngineLogic::LoadMap(L"DraftLobby", L""); //L"game=/Game/GameTypes/BP_GMM_BaseMOBA.BP_GMM_BaseMOBA_C" "/Game/Maps/Sovereign/Sovereign.umap" "Agora_P"
 }
 
 void ForceStartMatch() {
