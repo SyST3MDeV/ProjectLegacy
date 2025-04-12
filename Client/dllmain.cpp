@@ -44,7 +44,6 @@ namespace Offsets {
 
     //Core Game Offsets
     static const uintptr_t SET_UI_STATE = 0x7DDBC0;
-    static const uintptr_t START_DRAFT = 0x47F4A0;
     
     //Card System Offsets
     static const uintptr_t SET_AUTOBUY_CHECKBOX = 0x73E740;
@@ -285,9 +284,8 @@ namespace Hooking {
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
-        if (function->GetFullName().contains("OnRep_CurrentPhaseState")) {
+        if (function->GetFullName().contains("WaitTargetData")) {
             std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
-            return nullptr;
         }
 
         if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
@@ -411,7 +409,7 @@ namespace Hooking {
     bool InitializeMCPProfileHook(APlayerControllerCommon* playercontroller) {
         if (!initUI) {
             initUI = true;
-            //GameLogic::SetUIState(EOrionUIState::DraftLobby);
+            GameLogic::SetUIState(EOrionUIState::Match);
         }
         return true;
     }
@@ -789,7 +787,7 @@ void Main() {
     Hooking::InitHooking();
 
     while (true) {
-        MainLoop();
+        //MainLoop();
     }
 }
 
