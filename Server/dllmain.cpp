@@ -122,6 +122,7 @@ namespace Offsets {
     static const uintptr_t TARGETING_CONFIRM = 0x29841E0;
     static const uintptr_t TARGET_DATA_CACHE_CTOR = 0x2945A00;
     static const uintptr_t TARGET_DATA_CACHE_DTOR = 0x249430;
+    static const uintptr_t START_TARGETING_TARGET_DATA_REPLICATED = 0x2B66B0;
 
     //RHI Offsets
     static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
@@ -1236,12 +1237,6 @@ namespace Hooking {
 
     }
 
-    void* origTargetDataReplicated = nullptr;
-
-    void TargetDataReplicatedHook(UAbilityTask_WaitTargetData* targetData, void* a2) {
-        return reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*, void* a2)>(origTargetDataReplicated)(targetData, a2);
-    }
-
     void* origGameEngineTick = nullptr;
 
     static int numTicksAbilitiesTriggered = 0;
@@ -1509,8 +1504,8 @@ namespace Hooking {
         return true; // Sweet manmade horrors beyond comprehension
     }
 
-    void* origFuckYou = nullptr;
-    __int64 FuckYouHook(UOrionAbilityTask_StartTargeting* fuck, FGameplayAbilityTargetDataHandle* you) {
+    void* origTargetDataReplicated = nullptr;
+    __int64 TargetDataReplicatedHook(UOrionAbilityTask_StartTargeting* fuck, FGameplayAbilityTargetDataHandle* you) {
         reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*, FGameplayAbilityTargetDataHandle * you)>(Globals::ModuleBase + 0x2A1CE0)(fuck, you);
         return 0;
     }
@@ -1622,16 +1617,6 @@ namespace Hooking {
 
         MH_EnableHook(collectGarbage);
 
-        //void* consumeClientTargetData = (void*)(Globals::ModuleBase + Offsets::CONSUME_CLIENT_DATA);
-
-        //MH_CreateHook(consumeClientTargetData, reinterpret_cast<void*>(ConsumeClientTargetDataHook), &origConsumeClientTargetData);
-
-        void* targetDataReplicated = (void*)(Globals::ModuleBase + Offsets::TARGET_DATA_REPLICATED);
-
-        MH_CreateHook(targetDataReplicated, reinterpret_cast<void*>(TargetDataReplicatedHook), &origTargetDataReplicated);
-         
-        MH_EnableHook(targetDataReplicated);
-
         void* gameEngineTick = (void*)(Globals::ModuleBase + Offsets::GAME_ENGINE_TICK);
 
         MH_CreateHook(gameEngineTick, reinterpret_cast<void*>(GameEngineTickHook), &origGameEngineTick);
@@ -1740,15 +1725,11 @@ namespace Hooking {
 
         MH_EnableHook(abilityCacheDTOR);
 
-        void* fuckYou = (void*)(Globals::ModuleBase + 0x2B66B0);
+        void* targetDataReplicated = (void*)(Globals::ModuleBase + Offsets::START_TARGETING_TARGET_DATA_REPLICATED);
 
-        MH_CreateHook(fuckYou, reinterpret_cast<void*>(FuckYouHook), &origFuckYou);
+        MH_CreateHook(targetDataReplicated, reinterpret_cast<void*>(TargetDataReplicatedHook), &origTargetDataReplicated);
 
-        MH_EnableHook(fuckYou);
-
-        //
-
-        //
+        MH_EnableHook(targetDataReplicated);
     }
 }
 
