@@ -68,5 +68,8 @@
     <ClCompile Include="SDK\BP_PrimeHelix_v2_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="SDK\GameplayTasks_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

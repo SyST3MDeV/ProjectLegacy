@@ -72,6 +72,10 @@ namespace Offsets {
     static const uintptr_t TARGETING_CONFIRM = 0x294CAE0;
     static const uintptr_t IS_NET_READY = 0x1FEBA80;
     static const uintptr_t FILL_ACCOUNT_LEVEL_INFO = 0x2B67E00;
+
+    //Local Draft Hooking Offsets
+    static const uintptr_t DRAFT_INIT_PLAYER = 0x438C50;
+    static const uintptr_t DRAFT_GET_PC = 0x1EA9A10;
 #endif
 }
 
@@ -182,6 +186,10 @@ namespace EngineLogic {
     }
 }
 
+namespace Hooking {
+    void EnableLocalDraftHooks(); //TODO: What's a header file?
+}
+
 namespace GameLogic {
     void SetUIState(EOrionUIState state) {
         reinterpret_cast<void(__thiscall*)(UOrionUIManagerWidget*, EOrionUIState)>(Globals::ModuleBase + Offsets::SET_UI_STATE)(reinterpret_cast<UOrionGameInstance*>(Globals::GetGWorld()->OwningGameInstance)->UIManager, state);
@@ -189,6 +197,11 @@ namespace GameLogic {
 
     void HideLoadingScreen() {
         EngineLogic::ExecuteConsoleCommand(L"hideloadingscreen");
+    }
+
+    void StartLocalDraft() {
+        Hooking::EnableLocalDraftHooks();
+        EngineLogic::ExecuteConsoleCommand(L"open DraftLobby");
     }
 }
 
@@ -268,7 +281,7 @@ namespace Frontend{
     }
 
     void ConnectToMatch() {
-        EngineLogic::ExecuteConsoleCommand(L"open 127.0.0.1?displayname=gwog :3?hero=RiftMage?team=1");
+        EngineLogic::ExecuteConsoleCommand(L"open 127.0.0.1?displayname=gwog :3?hero=Rampage?team=1");
     }
 }
 
@@ -385,13 +398,12 @@ namespace Hooking {
 
                     //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(SDKUtils::GetLastOfType< UOrionAbilityTask_StartTargeting>());
 
-                    castObj->OnTargetingModeActivate();
-
-                    UOrionAbilityTask_StartTargeting* task = SDKUtils::GetLastOfType<UOrionAbilityTask_StartTargeting>();
+                    UOrionAbilityTask_StartTargeting* task = SDKUtils::GetLastOfType<UOrionAbilityTask_StartTargeting>(); // TODO: Hook CTOR & DTOR so we don't have to do *this*
 
                     std::cout << reinterpret_cast<bool(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x296FC00)(task) << std::endl;
 
-                    Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent->ServerTryActivateAbilityWithEventData(FGameplayAbilitySpecHandle(), false, FPredictionKey(), FGameplayEventData());
+                    //Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent->ServerTryActivateAbilityWithEventData(FGameplayAbilitySpecHandle(), false, FPredictionKey(), FGameplayEventData());
+                    
 
                     //return ret;
                 }
@@ -561,6 +573,66 @@ namespace Hooking {
         return true; // Sweet manmade horrors beyond comprehension
     }
 
+    void* origDraftInitPlayer = nullptr;
+    void DraftInitPlayerHook(void* a1, void* a2) {
+        AOrionGameState_DraftLobby* GameState = Globals::GetGameState< AOrionGameState_DraftLobby>();
+
+        GameState->Phases._data = (FDraftLobbyPhase*)EngineLogic::Malloc(sizeof(FDraftLobbyPhase), 0);
+
+        GameState->Phases._data[0] = FDraftLobbyPhase();
+
+        GameState->Phases._count = 1;
+        GameState->Phases._max = 1;
+
+        GameState->Phases._data->ChoosingPlayers._data = (FUniqueNetIdRepl*)EngineLogic::Malloc(sizeof(FUniqueNetIdRepl), 0);
+        GameState->Phases._data->ChoosingPlayers._count = 1;
+        GameState->Phases._data->ChoosingPlayers._max = 1;
+        GameState->Phases._data->ChoosingPlayers._data[0] = FUniqueNetIdRepl();
+
+        GameState->Phases._data->NumBots = 0;
+        GameState->Phases._data->PhaseIdx = 0;
+        GameState->Phases._data->TeamIndex = EOrionTeam::TeamRed;
+
+        GameState->OnRep_Phases();
+
+        GameState->CurrentDraftState = EDraftLobbyState::PlayerSelection;
+        GameState->CurrentPhaseIdx = 0;
+
+        GameState->OnRep_CurrentPhaseIdx();
+        GameState->OnRep_CurrentPhaseState();
+
+        GameState->CurrentStateCountdown = 999;
+
+        SDKUtils::GetLastOfType< UOrionStateWidget_DraftLobby>()->OnTurnStarted(EOrionTeamMemberType::LocalPlayer);
+
+        return;
+    }
+
+    void* draftGetPlayerControllerFromNetId = nullptr;
+    APlayerController* DraftGetPlayerControllerFromNetIdHook(UWorld* a1, void* a2) {
+        return Globals::GetLocalPlayerController<APlayerController>();
+    }
+
+    void EnableLocalDraftHooks() {
+        void* draftInitPlayer = (void*)(Globals::ModuleBase + Offsets::DRAFT_INIT_PLAYER);
+
+        MH_EnableHook(draftInitPlayer);
+
+        void* draftGetPC = (void*)(Globals::ModuleBase + Offsets::DRAFT_GET_PC);
+
+        MH_EnableHook(draftGetPC);
+    }
+
+    void DisableLocalDraftHooks() {
+        void* fillAccountLevel = (void*)(Globals::ModuleBase + Offsets::DRAFT_INIT_PLAYER);
+
+        MH_DisableHook(fillAccountLevel);
+
+        void* draftGetPC = (void*)(Globals::ModuleBase + Offsets::DRAFT_GET_PC);
+
+        MH_DisableHook(draftGetPC);
+    }
+
     void InitHooking() {
         MH_Initialize();
 
@@ -702,6 +774,14 @@ namespace Hooking {
 
         MH_EnableHook(fillAccountLevel);
 
+        void* draftInitPlayer = (void*)(Globals::ModuleBase + Offsets::DRAFT_INIT_PLAYER);
+
+        MH_CreateHook(draftInitPlayer, reinterpret_cast<void*>(DraftInitPlayerHook), &origDraftInitPlayer);
+
+        void* draftGetPC = (void*)(Globals::ModuleBase + Offsets::DRAFT_GET_PC);
+
+        MH_CreateHook(draftGetPC, reinterpret_cast<void*>(DraftGetPlayerControllerFromNetIdHook), &draftGetPlayerControllerFromNetId);
+
         //
 
         //814BD0
@@ -774,7 +854,21 @@ void ConnectToMatch() {
 }
 
 void MainLoop() {
+    if (GetAsyncKeyState(VK_F6)) {
+        SDKUtils::ListAllObjectsOfType< UOrionAbilityTask_StartTargeting>();
 
+        while (GetAsyncKeyState(VK_F6)) {
+
+        }
+    }
+
+    if (GetAsyncKeyState(VK_F7)) {
+        //Hooking::ProcInGameThread(GameLogic::StartLocalDraft);
+
+        while (GetAsyncKeyState(VK_F7)) {
+
+        }
+    }
 }
 
 void Main() {
@@ -787,7 +881,7 @@ void Main() {
     Hooking::InitHooking();
 
     while (true) {
-        //MainLoop();
+        MainLoop();
     }
 }
 

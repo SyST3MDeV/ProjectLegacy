@@ -71,5 +71,8 @@
     <ClCompile Include="SDK\BackgroundDisplay_Package.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
+    <ClCompile Include="SDK\DebugHeroSelect_Package.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

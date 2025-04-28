@@ -118,6 +118,8 @@ namespace Offsets {
     static const uintptr_t SPAWN_ACTOR = 0x1F7DA90;
     static const uintptr_t NOTIFY_ACTOR_DESTROYED = 0x1F67B20;
     static const uintptr_t TARGETING_CONFIRM = 0x29841E0;
+    static const uintptr_t TARGET_DATA_CACHE_CTOR = 0x2945A00;
+    static const uintptr_t TARGET_DATA_CACHE_DTOR = 0x249430;
 
     //RHI Offsets
     static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
@@ -613,6 +615,8 @@ namespace GameplayAbilities {
 
     static std::vector<AbilityConfirmation> targetingConfirmations = std::vector<AbilityConfirmation>();
 
+    std::vector<uintptr_t> targetDataCaches = std::vector<uintptr_t>();
+
     struct AbilityProcInfo {
         UOrionAbilitySystemComponent* asc;
         int numTimesTicked;
@@ -892,7 +896,7 @@ namespace Hooking {
         GameplayAbilities::targetingConfirmations.erase(std::remove_if(GameplayAbilities::targetingConfirmations.begin(), GameplayAbilities::targetingConfirmations.end(),
             [](GameplayAbilities::AbilityConfirmation confirmation) {
                 if (confirmation.task) { //confirmation.confirmed &&
-                    confirmation.task->ConfirmOrWait();
+                    //confirmation.task->ConfirmOrWait();
                     confirmation.confirmed = true;
                     //std::cout << "DID THE FUNNY" << std::endl;
                 }
@@ -1223,6 +1227,19 @@ namespace Hooking {
             procingCurrentFuncPtrs = false;
         }
 
+        if (GetAsyncKeyState(VK_F6)) {
+            auto thingies = SDKUtils::GetAllObjectsOfType<AOrionTargetingMode>();
+
+            for (auto& thingy : thingies) {
+                std::cout << thingy->GetFullName() << std::endl;
+                std::cout << (int)thingy->ServerValidationFailPolicy << std::endl;
+            }
+
+            while (GetAsyncKeyState(VK_F6)) {
+
+            }
+        }
+
         static bool matchStarted = false;
         if(GetAsyncKeyState(VK_F7) && !matchStarted) {
             matchStarted = true;
@@ -1319,8 +1336,10 @@ namespace Hooking {
 
         GameplayAbilities::targetingConfirmations.erase(std::remove_if(GameplayAbilities::targetingConfirmations.begin(), GameplayAbilities::targetingConfirmations.end(),
             [](GameplayAbilities::AbilityConfirmation confirmation) {
-                if (confirmation.confirmed && confirmation.task)
-                    confirmation.task->ConfirmOrWait();
+                if (confirmation.confirmed && confirmation.task) {
+                    //confirmation.task->ConfirmOrWait();
+                }
+
 
                 return confirmation.confirmed;
             }), GameplayAbilities::targetingConfirmations.end());
@@ -1361,12 +1380,10 @@ namespace Hooking {
 
     void* origNewObjectStartTargeting = nullptr;
     UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(UObject* obj, FName* name, EGameplayTargetingConfirmation* targetingType, int32_t idk) { //__int64 a1, __int64 a2
-        std::cout << "TIME TO CREATED THINGY" << std::endl;
         
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation*, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
 
         if (target) {
-            std::cout << "CREATED THINGY" << std::endl;
             //GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
             if (target->Ability && reinterpret_cast<UOrionAbility*>(target->Ability)->GetFullName().find("Primary") != std::string::npos) {
                 GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, true));
@@ -1381,12 +1398,10 @@ namespace Hooking {
 
     void* origNewObjectStartTargetingWithActor = nullptr;
     UOrionAbilityTask_StartTargeting* NewObjectStartTargetingWithActorHook(UObject* obj, FName* name, EGameplayTargetingConfirmation targetingType, __int64 idk) { //__int64 a1, __int64 a2
-        std::cout << "TIME TO CREATED THINGY" << std::endl;
         
         UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, __int64)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
 
         if (target) {
-            std::cout << "CREATED THINGY" << std::endl;
             //GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
             if (target->Ability && reinterpret_cast<UOrionAbility*>(target->Ability)->GetFullName().find("Primary") != std::string::npos) {
                 GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, true));
@@ -1528,9 +1543,36 @@ namespace Hooking {
     }
     */
 
+    void* origTargetCacheCTOR = nullptr;
+    uintptr_t TargetCacheCTORHook(uintptr_t a1) {
+        uintptr_t ret = reinterpret_cast<uintptr_t(*)(uintptr_t)>(origTargetCacheCTOR)(a1);
+
+        GameplayAbilities::targetDataCaches.push_back(ret);
+
+        return ret;
+    }
+
+    void* origTargetCacheDTOR = nullptr;
+    uintptr_t TargetCacheDTORHook(uintptr_t a1) {
+        GameplayAbilities::targetDataCaches.erase(std::remove_if(GameplayAbilities::targetDataCaches.begin(), GameplayAbilities::targetDataCaches.end(),
+            [a1](uintptr_t cmp) {
+                return cmp == a1;
+            }), GameplayAbilities::targetDataCaches.end());
+
+        uintptr_t ret = reinterpret_cast<uintptr_t(*)(uintptr_t)>(origTargetCacheDTOR)(a1);
+
+        return ret;
+    }
+
     void* IsNetReady = nullptr;
     bool IsNetReadyHook(__int64 something, int somethingelse) {
         return true; // Sweet manmade horrors beyond comprehension
+    }
+
+    void* origFuckYou = nullptr;
+    __int64 FuckYouHook(UOrionAbilityTask_StartTargeting* fuck, FGameplayAbilityTargetDataHandle* you) {
+        reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*, FGameplayAbilityTargetDataHandle * you)>(Globals::ModuleBase + 0x2A1CE0)(fuck, you);
+        return 0;
     }
 
     void InitStartupHooking() {
@@ -1745,6 +1787,28 @@ namespace Hooking {
         MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
 
         MH_EnableHook(isNetReady);
+
+        void* abilityCacheCTOR = (void*)(Globals::ModuleBase + Offsets::TARGET_DATA_CACHE_CTOR);
+
+        MH_CreateHook(abilityCacheCTOR, reinterpret_cast<void*>(TargetCacheCTORHook), &origTargetCacheCTOR);
+
+        MH_EnableHook(abilityCacheCTOR);
+
+        void* abilityCacheDTOR = (void*)(Globals::ModuleBase + Offsets::TARGET_DATA_CACHE_DTOR);
+
+        MH_CreateHook(abilityCacheDTOR, reinterpret_cast<void*>(TargetCacheDTORHook), &origTargetCacheDTOR);
+
+        MH_EnableHook(abilityCacheDTOR);
+
+        void* fuckYou = (void*)(Globals::ModuleBase + 0x2B66B0);
+
+        MH_CreateHook(fuckYou, reinterpret_cast<void*>(FuckYouHook), &origFuckYou);
+
+        MH_EnableHook(fuckYou);
+
+        //
+
+        //
     }
 }
 
