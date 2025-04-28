@@ -645,31 +645,6 @@ namespace DamageCalculations {
 }
 
 namespace GameplayAbilities {
-    struct AbilityConfirmation {
-        UOrionAbilityTask_StartTargeting* task;
-        bool confirmed;
-
-        AbilityConfirmation(UOrionAbilityTask_StartTargeting* newtask, bool newconfirmed) {
-            task = newtask;
-            confirmed = newconfirmed;
-        }
-    };
-
-    static std::vector<AbilityConfirmation> targetingConfirmations = std::vector<AbilityConfirmation>();
-
-    std::vector<uintptr_t> targetDataCaches = std::vector<uintptr_t>();
-
-    struct AbilityProcInfo {
-        UOrionAbilitySystemComponent* asc;
-        int numTimesTicked;
-
-        AbilityProcInfo(UOrionAbilitySystemComponent* asc) {
-            this->asc = asc;
-            this->numTimesTicked = 0;
-        }
-    };
-
-    static std::vector<AbilityProcInfo> abilitiesToProc = std::vector<AbilityProcInfo>();
 
     void InternalServerTryActiveAbility(UAbilitySystemComponent* component, FGameplayAbilitySpecHandle Handle, bool inputPressed, FPredictionKey& PredictionKey, FGameplayEventData* TriggerEventData) {
         FGameplayAbilitySpec* spec = reinterpret_cast<FGameplayAbilitySpec * (*)(UAbilitySystemComponent*, FGameplayAbilitySpecHandle)>(Globals::ModuleBase + Offsets::FIND_ABILITY_SPEC_FROM_HANDLE)(component, Handle);
@@ -917,42 +892,6 @@ namespace Hooking {
         FuncPtrsToProcInGameThread.push_back(ptr);
     }
 
-    static bool triggerAbilityFailed = false;
-
-    bool TriggerAbilities(UAbilitySystemComponent* asc){
-        bool procdAnAbility = false;
-
-        /*
-        for (GameplayAbilities::AbilityConfirmation confirmation : GameplayAbilities::targetingConfirmations) {
-            if (confirmation.task && asc == confirmation.task->AbilitySystemComponent) {
-                procdAnAbility = true;
-
-                //confirmation.task->ConfirmOrWait();
-
-                confirmation.task = nullptr;
-                confirmation.confirmed = true;
-            }
-        }
-        */
-
-        GameplayAbilities::targetingConfirmations.erase(std::remove_if(GameplayAbilities::targetingConfirmations.begin(), GameplayAbilities::targetingConfirmations.end(),
-            [](GameplayAbilities::AbilityConfirmation confirmation) {
-                if (confirmation.task) { //confirmation.confirmed &&
-                    //confirmation.task->ConfirmOrWait();
-                    confirmation.confirmed = true;
-                    //std::cout << "DID THE FUNNY" << std::endl;
-                }
-
-                return confirmation.confirmed;
-            }), GameplayAbilities::targetingConfirmations.end());
-
-        if (!procdAnAbility) {
-            std::cout << "Tried to trigger targeting but failed!" << std::endl;
-        }
-
-        return procdAnAbility;
-    }
-
     //void ProcTriggerAbilityInDelay() {
         //Sleep(10);
         //ProcInGameThread(TriggerAbilities);
@@ -1020,18 +959,6 @@ namespace Hooking {
             GameplayAbilities::InternalServerTryActiveAbility(reinterpret_cast<UAbilitySystemComponent*>(object), castParams->AbilityToActivate, castParams->InputPressed, castParams->PredictionKey, nullptr);
 
             return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
-        }
-
-        if (function == internalServerTryActiveAbilityFunctionWithEventData) {
-            //std::cout << "DUMMY FUNCTION CALLED" << std::endl;
-
-            UOrionAbilitySystemComponent* castObj = (UOrionAbilitySystemComponent*)object;
-
-            //GameplayAbilities::abilitiesToProc.push_back(GameplayAbilities::AbilityProcInfo(castObj));
-
-            TriggerAbilities(castObj);
-
-            return nullptr;
         }
 
         if (object->Class == UOrionDamage::StaticClass() || object->Class == UOrionExecute::StaticClass()) {
@@ -1269,16 +1196,6 @@ namespace Hooking {
             GameLogic::StartMatch();
         }
 
-        GameplayAbilities::targetingConfirmations.erase(std::remove_if(GameplayAbilities::targetingConfirmations.begin(), GameplayAbilities::targetingConfirmations.end(),
-            [](GameplayAbilities::AbilityConfirmation confirmation) {
-                if (confirmation.confirmed && confirmation.task) {
-                    //confirmation.task->ConfirmOrWait();
-                }
-
-
-                return confirmation.confirmed;
-            }), GameplayAbilities::targetingConfirmations.end());
-
         if (Globals::shouldStartMatch) {
             numTicksWaitedToStartMatch++;
 
@@ -1311,43 +1228,6 @@ namespace Hooking {
     void* origDemoTickFlush = nullptr;
     __int64 DemoTickFlushHook(UDemoNetDriver* a1, float a2) {
         return 0;
-    }
-
-    void* origNewObjectStartTargeting = nullptr;
-    UOrionAbilityTask_StartTargeting* NewObjectStartTargetingHook(UObject* obj, FName* name, EGameplayTargetingConfirmation* targetingType, int32_t idk) { //__int64 a1, __int64 a2
-        
-        UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation*, int32_t)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
-
-        if (target) {
-            //GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
-            if (target->Ability && reinterpret_cast<UOrionAbility*>(target->Ability)->GetFullName().find("Primary") != std::string::npos) {
-                GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, true));
-            }
-            else {
-                GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
-            }
-        }
-
-        return target;
-    }
-
-    void* origNewObjectStartTargetingWithActor = nullptr;
-    UOrionAbilityTask_StartTargeting* NewObjectStartTargetingWithActorHook(UObject* obj, FName* name, EGameplayTargetingConfirmation targetingType, __int64 idk) { //__int64 a1, __int64 a2
-        
-        UOrionAbilityTask_StartTargeting* target = reinterpret_cast<UOrionAbilityTask_StartTargeting * (*)(UObject*, FName*, EGameplayTargetingConfirmation, __int64)>(origNewObjectStartTargeting)(obj, name, targetingType, idk);
-
-        if (target) {
-            //GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
-            if (target->Ability && reinterpret_cast<UOrionAbility*>(target->Ability)->GetFullName().find("Primary") != std::string::npos) {
-                GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, true));
-                //target->ConfirmOrCancel();
-            }
-            else {
-                GameplayAbilities::targetingConfirmations.push_back(GameplayAbilities::AbilityConfirmation(target, false));
-            }
-        }
-
-        return target;
     }
 
     //virtual class APlayerController * __ptr64 __cdecl AOrionGameMode_MOBA::Login(class UPlayer * __ptr64,enum ENetRole,class FString const & __ptr64,class FString const & __ptr64,struct FUniqueNetIdRepl const & __ptr64,class FString & __ptr64)
@@ -1477,27 +1357,6 @@ namespace Hooking {
         reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*)>(origTargetingConfirm)(a1);
     }
     */
-
-    void* origTargetCacheCTOR = nullptr;
-    uintptr_t TargetCacheCTORHook(uintptr_t a1) {
-        uintptr_t ret = reinterpret_cast<uintptr_t(*)(uintptr_t)>(origTargetCacheCTOR)(a1);
-
-        GameplayAbilities::targetDataCaches.push_back(ret);
-
-        return ret;
-    }
-
-    void* origTargetCacheDTOR = nullptr;
-    uintptr_t TargetCacheDTORHook(uintptr_t a1) {
-        GameplayAbilities::targetDataCaches.erase(std::remove_if(GameplayAbilities::targetDataCaches.begin(), GameplayAbilities::targetDataCaches.end(),
-            [a1](uintptr_t cmp) {
-                return cmp == a1;
-            }), GameplayAbilities::targetDataCaches.end());
-
-        uintptr_t ret = reinterpret_cast<uintptr_t(*)(uintptr_t)>(origTargetCacheDTOR)(a1);
-
-        return ret;
-    }
 
     void* IsNetReady = nullptr;
     bool IsNetReadyHook(__int64 something, int somethingelse) {
@@ -1641,12 +1500,6 @@ namespace Hooking {
 
         MH_EnableHook(demoTickFlush);
 
-        void* startTargeting = (void*)(Globals::ModuleBase + 0x2BAD40);
-
-        MH_CreateHook(startTargeting, reinterpret_cast<void*>(NewObjectStartTargetingHook), &origNewObjectStartTargeting);
-
-        MH_EnableHook(startTargeting);
-
         void* loginHook = (void*)(Globals::ModuleBase + Offsets::LOGIN);
 
         MH_CreateHook(loginHook, reinterpret_cast<void*>(LoginHook), &origLogin);
@@ -1712,18 +1565,6 @@ namespace Hooking {
         MH_CreateHook(isNetReady, reinterpret_cast<void*>(IsNetReadyHook), &IsNetReady);
 
         MH_EnableHook(isNetReady);
-
-        void* abilityCacheCTOR = (void*)(Globals::ModuleBase + Offsets::TARGET_DATA_CACHE_CTOR);
-
-        MH_CreateHook(abilityCacheCTOR, reinterpret_cast<void*>(TargetCacheCTORHook), &origTargetCacheCTOR);
-
-        MH_EnableHook(abilityCacheCTOR);
-
-        void* abilityCacheDTOR = (void*)(Globals::ModuleBase + Offsets::TARGET_DATA_CACHE_DTOR);
-
-        MH_CreateHook(abilityCacheDTOR, reinterpret_cast<void*>(TargetCacheDTORHook), &origTargetCacheDTOR);
-
-        MH_EnableHook(abilityCacheDTOR);
 
         void* targetDataReplicated = (void*)(Globals::ModuleBase + Offsets::START_TARGETING_TARGET_DATA_REPLICATED);
 

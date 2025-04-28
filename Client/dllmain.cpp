@@ -389,27 +389,6 @@ namespace Hooking {
             }
         }
 
-        if ((object->GetFullName().find("Targeting") != std::string::npos || function->GetFullName().find("Targeting") != std::string::npos) && function->GetFullName().find("Confirm") != std::string::npos) { // TODO: This sucks, find a better way to do this
-            if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->IsA(AOrionPlayerState_Game::StaticClass())) {
-                if (Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent) {
-                    AOrionTargetingMode* castObj = (AOrionTargetingMode*)object;
-
-                    //void* ret = reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
-
-                    //reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x2975F0)(SDKUtils::GetLastOfType< UOrionAbilityTask_StartTargeting>());
-
-                    UOrionAbilityTask_StartTargeting* task = SDKUtils::GetLastOfType<UOrionAbilityTask_StartTargeting>(); // TODO: Hook CTOR & DTOR so we don't have to do *this*
-
-                    std::cout << reinterpret_cast<bool(*)(UOrionAbilityTask_StartTargeting*)>(Globals::ModuleBase + 0x296FC00)(task) << std::endl;
-
-                    //Globals::GetLocalPlayerState<AOrionPlayerState_Game>()->AbilitySystemComponent->ServerTryActivateAbilityWithEventData(FGameplayAbilitySpecHandle(), false, FPredictionKey(), FGameplayEventData());
-                    
-
-                    //return ret;
-                }
-            }
-        }
-
         return reinterpret_cast<void* (__thiscall*)(UObject*, UFunction*, void*)>(origProcessEvent)(object, function, params);
     }
     
