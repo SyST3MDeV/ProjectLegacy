@@ -281,7 +281,7 @@ namespace Frontend{
     }
 
     void ConnectToMatch() {
-        EngineLogic::ExecuteConsoleCommand(L"open 127.0.0.1?displayname=gwog :3?hero=Rampage?team=1");
+        EngineLogic::ExecuteConsoleCommand(L"open 127.0.0.1?displayname=gwog :3?hero=RiftMage?team=1");
     }
 }
 
