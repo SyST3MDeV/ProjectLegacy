@@ -297,10 +297,6 @@ namespace Hooking {
     void* origProcessEvent = nullptr;
 
     void* ProcessEventHook(UObject* object, UFunction* function, void* params) {
-        if (function->GetFullName().contains("WaitTargetData")) {
-            std::cout << object->GetFullName() << " - " << function->GetFullName() << std::endl;
-        }
-
         if (!procingCurrentFuncPtrs && FuncPtrsToProcInGameThread.size() > 0) {
             procingCurrentFuncPtrs = true;
 
@@ -359,12 +355,14 @@ namespace Hooking {
 
                 FGameplayTag tag = FGameplayTag();
 
-                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage");
+                tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
 
                 castParams->GameplayCueParameters.OriginalTag = tag;
+                 
                 castParams->GameplayCueParameters.MatchedTagName = tag;
 
                 if (targetActor && gcManager) {
+                    //reinterpret_cast<void(*)(UGameplayCueManager*, EOrionDamageNumberType, AActor*, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4ACCD0)(gcManager, EOrionDamageNumberType::EnergyDamage, targetActor, &castParams->GameplayCueParameters);
                     reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
                 }
             }
@@ -384,6 +382,9 @@ namespace Hooking {
                 castParams->GameplayCueParameters.MatchedTagName = tag;
                 
                 if (targetActor && gcManager) {
+                    //0x4ACCD0
+                    //UOrionGameplayCueManager::DoDamageNumber(enum EOrionDamageNumberType::Type,class AActor * __ptr64,struct FGameplayCueParameters const & __ptr64)
+                    //reinterpret_cast<void(*)(UGameplayCueManager*, EOrionDamageNumberType, AActor*, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4ACCD0)(gcManager, EOrionDamageNumberType::EnergyDamage, targetActor, &castParams->GameplayCueParameters);
                     reinterpret_cast<void(*)(UGameplayCueManager*, AActor*, FGameplayTag, EGameplayCueEvent, FGameplayCueParameters*)>(Globals::ModuleBase + 0x4C7F70)(gcManager, targetActor, tag, EGameplayCueEvent::Executed, &castParams->GameplayCueParameters);
                 }
             }
@@ -833,14 +834,6 @@ void ConnectToMatch() {
 }
 
 void MainLoop() {
-    if (GetAsyncKeyState(VK_F6)) {
-        SDKUtils::ListAllObjectsOfType< UOrionAbilityTask_StartTargeting>();
-
-        while (GetAsyncKeyState(VK_F6)) {
-
-        }
-    }
-
     if (GetAsyncKeyState(VK_F7)) {
         //Hooking::ProcInGameThread(GameLogic::StartLocalDraft);
 

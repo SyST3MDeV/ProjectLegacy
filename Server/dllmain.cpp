@@ -123,6 +123,7 @@ namespace Offsets {
     static const uintptr_t TARGET_DATA_CACHE_CTOR = 0x2945A00;
     static const uintptr_t TARGET_DATA_CACHE_DTOR = 0x249430;
     static const uintptr_t START_TARGETING_TARGET_DATA_REPLICATED = 0x2B66B0;
+    static const uintptr_t START_TARGETING_CONFIRM_IMPL = 0x2A1CE0;
 
     //RHI Offsets
     static const uintptr_t INIT_NORMAL_RHI = 0x13BF510;
@@ -586,8 +587,8 @@ namespace DamageCalculations {
 
         FPredictionKey key = FPredictionKey();
 
-        if (instigatorASC) {
-            if (instigatorASC->AvatarActor && instigatorASC->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
+        if (params->ExecutionParams.TargetAbilitySystemComponent.Get() && params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor) {
+            if (params->ExecutionParams.TargetAbilitySystemComponent.Get()->AvatarActor->IsA(AOrionCharHero::StaticClass())) {
                 key.Base = INT16_MAX;
                 key.Current = INT16_MAX;
                 //tag.TagName = Globals::GetKismetStringLibrary()->STATIC_Conv_StringToName(L"GameplayCue_Damage_Hero");
@@ -891,11 +892,6 @@ namespace Hooking {
     void ProcInGameThread(void* ptr) {
         FuncPtrsToProcInGameThread.push_back(ptr);
     }
-
-    //void ProcTriggerAbilityInDelay() {
-        //Sleep(10);
-        //ProcInGameThread(TriggerAbilities);
-    //}
 
     //char __fastcall UNetDriver::NotifyActorDestroyed(UNetDriver *this, struct AActor *a2, char a3)
     void* origNotifyActorDestroyed = nullptr;
@@ -1349,23 +1345,14 @@ namespace Hooking {
         return reinterpret_cast<AOrionAIBot * (*)(UOrionAISystem * a1, UOrionHeroData * a2, EOrionTeam a3, EAIBotDifficulty a4, FVector a5, FRotator a6)>(origSpawnBot)(a1, a2, a3, a4, a5, a6);
     }
 
-    /*
-    void* origTargetingConfirm = nullptr;
-    void TargetingConfirmHook(UAbilityTask_WaitTargetData* a1) {
-        std::cout << *(unsigned __int64*)(a1 + 0x68) << std::endl;
-
-        reinterpret_cast<void(*)(UAbilityTask_WaitTargetData*)>(origTargetingConfirm)(a1);
-    }
-    */
-
     void* IsNetReady = nullptr;
     bool IsNetReadyHook(__int64 something, int somethingelse) {
         return true; // Sweet manmade horrors beyond comprehension
     }
 
     void* origTargetDataReplicated = nullptr;
-    __int64 TargetDataReplicatedHook(UOrionAbilityTask_StartTargeting* fuck, FGameplayAbilityTargetDataHandle* you) {
-        reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*, FGameplayAbilityTargetDataHandle * you)>(Globals::ModuleBase + 0x2A1CE0)(fuck, you);
+    __int64 TargetDataReplicatedHook(UOrionAbilityTask_StartTargeting* Task, FGameplayAbilityTargetDataHandle* Handle) {
+        reinterpret_cast<void(*)(UOrionAbilityTask_StartTargeting*, FGameplayAbilityTargetDataHandle *)>(Globals::ModuleBase + Offsets::START_TARGETING_CONFIRM_IMPL)(Task, Handle);
         return 0;
     }
 
